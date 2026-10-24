@@ -612,8 +612,9 @@ def test_suffix_index_refreshes_after_extension_lookup_loads_files() -> None:
     ]
 
 
-def test_public_reflection_pool_preserves_source_metadata_for_lazy_files(
-) -> None:
+def test_public_reflection_pool_preserves_source_metadata_for_lazy_files() -> (
+    None
+):
     docs_proto = descriptor_pb2.FileDescriptorProto(
         name="docs.proto", package="docs", syntax="proto2"
     )
@@ -741,9 +742,9 @@ def test_public_reflection_pool_metadata_is_isolated_by_pool_identity() -> None:
     )
     second_proto = descriptor_pb2.FileDescriptorProto()
     second_proto.CopyFrom(first_proto)
-    second_proto.source_code_info.location[0].leading_comments = (
-        " second reflected pool\n"
-    )
+    second_proto.source_code_info.location[
+        0
+    ].leading_comments = " second reflected pool\n"
 
     def reflected_source(
         file_proto: descriptor_pb2.FileDescriptorProto,
@@ -808,9 +809,9 @@ def test_descriptor_source_metadata_override_takes_priority_over_pool() -> None:
     )
     override_proto = descriptor_pb2.FileDescriptorProto()
     override_proto.CopyFrom(pool_proto)
-    override_proto.source_code_info.location[0].leading_comments = (
-        " descriptor metadata\n"
-    )
+    override_proto.source_code_info.location[
+        0
+    ].leading_comments = " descriptor metadata\n"
     pool = descriptor_pool.DescriptorPool()
     pool.Add(pool_proto)
     register_pool_file_protos(pool, {pool_proto.name: pool_proto})
@@ -826,8 +827,7 @@ def test_descriptor_source_metadata_override_takes_priority_over_pool() -> None:
     )
 
 
-def test_exact_reflection_lookup_registers_source_metadata_before_indexing(
-) -> None:
+def test_exact_reflection_lookup_registers_metadata_before_indexing() -> None:
     file_proto = descriptor_pb2.FileDescriptorProto(
         name="docs.proto", package="docs", syntax="proto3"
     )
@@ -900,8 +900,7 @@ def test_exact_reflection_lookup_registers_source_metadata_before_indexing(
     ]
 
 
-def test_exact_reflection_lookup_before_suffix_index_includes_unlinked_file(
-) -> None:
+def test_exact_reflection_lookup_before_index_includes_unlinked_file() -> None:
     api_proto = _file("api.proto", "api")
     orphan_proto = descriptor_pb2.FileDescriptorProto(
         name="orphan.proto", package="orphan", syntax="proto3"

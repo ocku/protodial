@@ -757,9 +757,9 @@ def test_source_comments_are_isolated_by_descriptor_source_identity() -> None:
     )
     second_proto = descriptor_pb2.FileDescriptorProto()
     second_proto.CopyFrom(first_proto)
-    second_proto.source_code_info.location[0].leading_comments = (
-        " second source\n"
-    )
+    second_proto.source_code_info.location[
+        0
+    ].leading_comments = " second source\n"
 
     first = source_from_file_protos((first_proto,))
     second = source_from_file_protos((second_proto,))

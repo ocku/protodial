@@ -148,10 +148,7 @@ class IndexedDescriptorSource:
 
     def _build_index(self) -> dict[str, DescriptorSymbol]:
         file_names = frozenset(self._file_protos)
-        if (
-            self._symbols is not None
-            and self._indexed_file_names == file_names
-        ):
+        if self._symbols is not None and self._indexed_file_names == file_names:
             return self._symbols
 
         builder = _DescriptorIndexBuilder(self._file_protos)
