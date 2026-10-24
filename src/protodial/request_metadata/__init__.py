@@ -1,9 +1,8 @@
-"""Request metadata types, validation, expansion, and parsing."""
+"""Request metadata types, validation, and parsing."""
 
 from .parsing import (
     MetadataError,
     MetadataScopes,
-    expand_metadata_value,
     parse_metadata,
     parse_metadata_entry,
     parse_metadata_scopes,
@@ -18,7 +17,6 @@ __all__ = [
     "MetadataIterable",
     "MetadataScopes",
     "MetadataValue",
-    "expand_metadata_value",
     "parse_metadata",
     "parse_metadata_entry",
     "parse_metadata_scopes",

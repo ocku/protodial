@@ -91,7 +91,6 @@ def _descriptor_plan(command: Command) -> _DescriptorPlan:
             command.metadata.header,
             command.metadata.reflect_header,
             command.metadata.rpc_header,
-            expand=command.metadata.expand_headers,
         )
     except MetadataError as error:
         raise CliError(str(error)) from error

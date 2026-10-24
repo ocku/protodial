@@ -66,7 +66,6 @@ def _build_command(
             header=tuple(namespace.header),
             reflect_header=tuple(namespace.reflect_header),
             rpc_header=tuple(getattr(namespace, "rpc_header", ())),
-            expand_headers=namespace.expand_headers,
         ),
         diagnostics=DiagnosticOptions(
             show_headers=verbosity > 0 or namespace.show_headers,

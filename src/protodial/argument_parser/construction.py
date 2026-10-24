@@ -338,9 +338,6 @@ def _add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
         default=[],
         help="reflection-only metadata",
     )
-    parser.add_argument(
-        "--expand-headers", action="store_true", help="expand $NAME and ${NAME}"
-    )
 
 
 def _add_rpc_metadata_argument(parser: argparse.ArgumentParser) -> None:

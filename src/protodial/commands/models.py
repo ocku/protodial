@@ -76,7 +76,6 @@ class MetadataOptions:
     header: tuple[str, ...]
     reflect_header: tuple[str, ...] = ()
     rpc_header: tuple[str, ...] = ()
-    expand_headers: bool = False
 
 
 @dataclass(frozen=True)

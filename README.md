@@ -176,8 +176,6 @@ protodial -H 'authorization:Bearer token' --rpc-header 'x-request-id:1234' \
 `-H` / `--header` metadata is sent to reflection and the application RPC.
 `--reflect-header` and `--rpc-header` add scope-specific metadata without
 replacing duplicate keys. Values for keys ending in `-bin` must be base64.
-`--expand-headers` expands `$NAME` and `${NAME}` in values; `$$` is a literal
-dollar sign. Expansion does not invoke a shell.
 
 Diagnostics never share stdout with response data:
 

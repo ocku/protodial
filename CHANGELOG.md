@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1 — 2026-10-25
+
+- Remove `--expand-headers`; use shell expansion for environment variables in
+  metadata values instead.
+
 ## 1.0.0 — 2026-10-25
 
 Initial release.

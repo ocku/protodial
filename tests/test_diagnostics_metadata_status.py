@@ -92,26 +92,17 @@ def test_metadata_rejects_invalid_syntax_and_keys(header: str) -> None:
         parse_metadata([header])
 
 
-def test_metadata_expansion_is_opt_in_shell_free_and_supports_escaping() -> (
-    None
-):
+def test_metadata_preserves_literal_dollar_expressions() -> None:
     raw = "${TOKEN}:$TOKEN:$$TOKEN:$(echo nope)"
-    assert parse_metadata(
-        [f"authorization:{raw}"], environ={"TOKEN": "secret"}
-    ) == [("authorization", raw)]
-    assert parse_metadata(
-        [f"authorization:{raw}"], expand=True, environ={"TOKEN": "secret"}
-    ) == [("authorization", "secret:secret:$TOKEN:$(echo nope)")]
-    with pytest.raises(MetadataError, match="MISSING"):
-        parse_metadata(["x:${MISSING}"], expand=True, environ={})
+    assert parse_metadata([f"authorization:{raw}"]) == [("authorization", raw)]
 
 
-def test_binary_metadata_expands_before_strict_base64_decode() -> None:
-    assert parse_metadata(
-        ["token-bin:${TOKEN}"], expand=True, environ={"TOKEN": "AAE="}
-    ) == [("token-bin", b"\x00\x01")]
+def test_binary_metadata_requires_strict_base64() -> None:
+    assert parse_metadata(["token-bin:AAE="]) == [("token-bin", b"\x00\x01")]
     with pytest.raises(MetadataError, match="token-bin"):
         parse_metadata(["token-bin:not base64!"])
+    with pytest.raises(MetadataError, match="token-bin"):
+        parse_metadata(["token-bin:${TOKEN}"])
 
 
 @pytest.mark.parametrize(
