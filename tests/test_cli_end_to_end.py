@@ -1544,11 +1544,16 @@ def test_cli_verified_tls_and_mtls(
     assert stderr == ""
 
 
+@pytest.mark.parametrize("use_tcp", [False, True])
 def test_cli_insecure_tls_tunnel(
     schema: Schema,
     certificates: Certificates,
     capfd: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    use_tcp: bool,
 ) -> None:
+    if use_tcp:
+        monkeypatch.delattr(socket, "AF_UNIX", raising=False)
     credentials = grpc.ssl_server_credentials(
         (
             (
@@ -1573,7 +1578,7 @@ def test_cli_insecure_tls_tunnel(
         running.server.stop(None).wait()
 
     output, stderr = _json_output(capfd)
-    assert exit_code == 0
+    assert exit_code == 0, stderr
     assert output == [{"text": "TUNNEL"}]
     assert (
         "* warning (W3001): TLS certificate verification is disabled" in stderr

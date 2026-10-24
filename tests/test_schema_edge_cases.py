@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 from typing import Any
 
@@ -20,6 +20,8 @@ from protodial.schema.local import (
     ProtoDescriptorSource,
     _common_entrypoint_root,
     _compile_proto_registry,
+    _protoc_arguments,
+    _ProtoCompilerInputs,
 )
 from protodial.schema.reflection import (
     ReflectionDescriptorSource,
@@ -84,6 +86,33 @@ class _DescriptorBatchChannel:
             return _Call(response_deserializer(response.SerializeToString()))
 
         return rpc
+
+
+def test_protoc_entrypoints_use_forward_slashes_on_windows() -> None:
+    root = PureWindowsPath("C:/schemas")
+    descriptor_path = PureWindowsPath("C:/output/schema.pb")
+    relative_files = (
+        PureWindowsPath("nested/types.proto"),
+        PureWindowsPath("first/service.proto"),
+        PureWindowsPath("second/service.proto"),
+    )
+    inputs = _ProtoCompilerInputs(
+        files=tuple(root / path for path in relative_files),
+        roots=(root,),
+        relative_files=relative_files,
+    )
+
+    arguments = _protoc_arguments(descriptor_path, inputs)
+
+    assert arguments[3:] == [
+        f"-I{root}",
+        f"--descriptor_set_out={descriptor_path}",
+        "--include_imports",
+        "--include_source_info",
+        "nested/types.proto",
+        "first/service.proto",
+        "second/service.proto",
+    ]
 
 
 def test_nested_proto_entrypoints_are_independent_of_argument_order(

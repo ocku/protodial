@@ -83,6 +83,7 @@ def test_start_preserves_primary_when_directory_cleanup_fails(monkeypatch):
             raise StartError("accept thread failed")
 
     listener = FakeListener()
+    monkeypatch.setattr(insecure_core.socket, "AF_UNIX", 1, raising=False)
     tunnel = InsecureTlsTunnel("example.test:443")
     monkeypatch.setattr(tunnel, "_create_ssl_context", object)
     monkeypatch.setattr(

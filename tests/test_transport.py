@@ -535,7 +535,8 @@ def test_insecure_tunnel_loads_client_material_from_private_temporary_files(
     assert tunnel._create_ssl_context() is context
     assert loaded["certificate"] == b"validated-certificate"
     assert loaded["key"] == b"decrypted-key"
-    assert loaded["modes"] == (0o600, 0o600)
+    if os.name == "posix":
+        assert loaded["modes"] == (0o600, 0o600)
     assert all(not os.path.exists(path) for path in loaded["paths"])
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import select
 import socket
 import ssl
 import tempfile
@@ -463,36 +464,83 @@ class InsecureTlsTunnel:
     def _relay_bidirectionally(
         self, client: socket.socket, remote: socket.socket
     ) -> None:
-        errors: list[BaseException] = []
-        error_lock = threading.Lock()
-
-        def relay(source: socket.socket, destination: socket.socket) -> None:
-            try:
-                while not self._closed.is_set():
-                    data = source.recv(self.buffer_size)
-                    if not data:
-                        with contextlib.suppress(OSError):
-                            destination.shutdown(socket.SHUT_WR)
-                        return
-                    destination.sendall(data)
-            except (OSError, ssl.SSLError) as error:
-                if not self._closed.is_set():
-                    with error_lock:
-                        errors.append(error)
-                with contextlib.suppress(OSError):
-                    destination.shutdown(socket.SHUT_RDWR)
-
-        outbound = threading.Thread(
-            target=relay,
-            args=(client, remote),
-            name="protodial-insecure-tls-upstream",
-            daemon=True,
-        )
-        outbound.start()
-        relay(remote, client)
-        outbound.join()
-        if errors:
-            self._record_error(errors[0])
+        # One owner must perform all SSL I/O: even concurrent reads and writes
+        # on an SSLSocket can corrupt OpenSSL's connection state.
+        connections = (client, remote)
+        buffers = [b"", b""]  # Indexed by source, not destination.
+        eof = [False, False]
+        read_wants_write = [False, False]
+        write_wants_read = [False, False]
+        try:
+            for connection in connections:
+                connection.setblocking(False)
+            while not self._closed.is_set():
+                readers: list[socket.socket] = []
+                writers: list[socket.socket] = []
+                pending = [False, False]
+                for index, connection in enumerate(connections):
+                    if not eof[index] and not buffers[index]:
+                        if read_wants_write[index]:
+                            writers.append(connection)
+                        else:
+                            readers.append(connection)
+                            pending[index] = (
+                                isinstance(connection, ssl.SSLSocket)
+                                and connection.pending() > 0
+                            )
+                    if buffers[1 - index]:
+                        if write_wants_read[1 - index]:
+                            readers.append(connection)
+                        else:
+                            writers.append(connection)
+                if not readers and not writers:
+                    return
+                readable, writable, _ = select.select(
+                    readers, writers, [], 0 if any(pending) else 0.1
+                )
+                for index, source in enumerate(connections):
+                    destination = connections[1 - index]
+                    if buffers[index]:
+                        ready = (
+                            destination in readable
+                            if write_wants_read[index]
+                            else destination in writable
+                        )
+                        if ready:
+                            try:
+                                sent = destination.send(buffers[index])
+                                if sent == 0:
+                                    raise ConnectionError(
+                                        "tunnel socket write returned zero"
+                                    )
+                                buffers[index] = buffers[index][sent:]
+                                write_wants_read[index] = False
+                            except ssl.SSLWantReadError:
+                                write_wants_read[index] = True
+                            except (ssl.SSLWantWriteError, BlockingIOError):
+                                write_wants_read[index] = False
+                    elif not eof[index]:
+                        ready = (
+                            source in writable
+                            if read_wants_write[index]
+                            else source in readable or pending[index]
+                        )
+                        if ready:
+                            try:
+                                buffers[index] = source.recv(self.buffer_size)
+                                read_wants_write[index] = False
+                                if not buffers[index]:
+                                    eof[index] = True
+                                    with contextlib.suppress(OSError):
+                                        destination.shutdown(socket.SHUT_WR)
+                            except ssl.SSLWantWriteError:
+                                read_wants_write[index] = True
+                            except (ssl.SSLWantReadError, BlockingIOError):
+                                read_wants_write[index] = False
+        except (OSError, ValueError) as error:
+            # close() may invalidate descriptors while select is waiting.
+            if not self._closed.is_set():
+                self._record_error(error)
 
 
 def _write_private_file(path: str, data: bytes) -> None:
