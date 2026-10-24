@@ -15,7 +15,7 @@ import ssl
 import tempfile
 import threading
 from collections.abc import Callable
-from typing import TextIO
+from typing import TextIO, cast
 
 from google.protobuf.message import Message
 
@@ -146,7 +146,8 @@ class InsecureTlsTunnel:
             if self._use_unix_socket:
                 directory = _unix_socket_directory()
                 path = os.path.join(directory.name, "relay.sock")
-                listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                unix_family = cast(int, getattr(socket, "AF_UNIX"))
+                listener = socket.socket(unix_family, socket.SOCK_STREAM)
                 listener.bind(path)
                 os.chmod(path, 0o600)
                 return listener, directory, path
