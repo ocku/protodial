@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package examples.streaming;
+
+service Streamer {
+  rpc Expand(ExpandRequest) returns (stream Item);
+  rpc Collect(stream Item) returns (Collection);
+  rpc Chat(stream Item) returns (stream Item);
+}
+
+message ExpandRequest {
+  string text = 1;
+  uint32 count = 2;
+}
+
+message Item {
+  string text = 1;
+  uint32 sequence = 2;
+}
+
+message Collection {
+  repeated string values = 1;
+  uint32 count = 2;
+}

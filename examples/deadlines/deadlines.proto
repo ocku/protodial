@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package examples.deadlines;
+
+service Sleeper {
+  rpc Sleep(SleepRequest) returns (SleepReply);
+}
+
+message SleepRequest {
+  uint32 delay_ms = 1;
+}
+
+message SleepReply {
+  uint32 slept_ms = 1;
+}

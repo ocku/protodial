@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package examples.formats;
+
+service Codec {
+  rpc EchoDocument(Document) returns (Document);
+  rpc EchoBlob(Blob) returns (Blob);
+}
+
+message Document {
+  enum Priority {
+    PRIORITY_UNSPECIFIED = 0;
+    PRIORITY_LOW = 1;
+    PRIORITY_HIGH = 2;
+  }
+
+  string title = 1;
+  bytes content = 2;
+  repeated string tags = 3;
+  map<string, string> labels = 4;
+  Priority priority = 5;
+
+  oneof destination {
+    string email = 6;
+    uint64 queue_id = 7;
+  }
+}
+
+message Blob {
+  bytes content = 1;
+}

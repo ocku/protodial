@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package examples.errors;
+
+service Validator {
+  rpc Validate(ValidateRequest) returns (ValidateReply);
+}
+
+message ValidateRequest {
+  string resource = 1;
+}
+
+message ValidateReply {
+  string resource = 1;
+  bool valid = 2;
+}
