@@ -1237,9 +1237,8 @@ def test_main_reports_tls_file_read_failures_as_local_io(
         assert missing.name in captured.err
         assert f"--> argument {argument_number}" in captured.err
         assert "path could not be read" in captured.err
-        assert "exists and is" in captured.err
-        assert "readable" in captured.err
-        assert "then pass it" in captured.err
+        normalized = " ".join(captured.err.split())
+        assert "exists and is readable, then pass it" in normalized
     assert "Traceback" not in captured.err
 
 

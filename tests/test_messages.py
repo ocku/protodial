@@ -208,8 +208,7 @@ def test_missing_json_separators_yield_the_same_prefix_for_every_split(
     column: int,
 ) -> None:
     chunkings = [[payload]] + [
-        [payload[:split], payload[split:]]
-        for split in range(1, len(payload))
+        [payload[:split], payload[split:]] for split in range(1, len(payload))
     ]
 
     for chunks in chunkings:
@@ -231,10 +230,14 @@ def test_json_framing_rejects_non_json_whitespace(separator: str) -> None:
     payload = f"{{}}{separator}{{}}".encode()
 
     for split in range(1, len(payload) + 1):
-        chunks = [payload] if split == len(payload) else [
-            payload[:split],
-            payload[split:],
-        ]
+        chunks = (
+            [payload]
+            if split == len(payload)
+            else [
+                payload[:split],
+                payload[split:],
+            ]
+        )
         values = iter_json_values(ChunkSource(chunks), _options())
 
         assert next(values) == ({}, "{}")
@@ -275,8 +278,7 @@ def test_invalid_utf8_preserves_values_before_it_for_every_split(
     column: int,
 ) -> None:
     chunkings = [[payload]] + [
-        [payload[:split], payload[split:]]
-        for split in range(1, len(payload))
+        [payload[:split], payload[split:]] for split in range(1, len(payload))
     ]
 
     for chunks in chunkings:
@@ -376,17 +378,12 @@ def test_incremental_json_numbers_are_independent_of_chunk_boundaries(
 ) -> None:
     encoded = text.encode()
     for split in range(1, len(encoded)):
-        source = ChunkSource(
-            [encoded[:split], encoded[split:] + b" ", b""]
-        )
+        source = ChunkSource([encoded[:split], encoded[split:] + b" ", b""])
 
-        assert list(iter_json_values(source, _options())) == [
-            (expected, text)
-        ]
+        assert list(iter_json_values(source, _options())) == [(expected, text)]
 
 
-def test_complete_json_number_with_framing_does_not_wait_for_another_chunk(
-) -> None:
+def test_framed_json_number_does_not_read_another_chunk() -> None:
     source = ChunkSource([b"1e+2 ", b"unread"])
     values = iter_json_values(source, _options())
 
@@ -489,8 +486,7 @@ def test_non_finite_json_number_diagnostic_is_partition_independent(
         )
         boundaries.append(len(payload))
         chunks = [
-            payload[start:end]
-            for start, end in zip(boundaries, boundaries[1:])
+            payload[start:end] for start, end in zip(boundaries, boundaries[1:])
         ]
         values = iter_json_values(ChunkSource(chunks), _options())
 
@@ -504,8 +500,9 @@ def test_non_finite_json_number_diagnostic_is_partition_independent(
             next(values)
 
 
-def test_framed_non_finite_json_number_does_not_wait_for_another_chunk(
-) -> None:
+def test_framed_non_finite_json_number_does_not_wait_for_another_chunk() -> (
+    None
+):
     source = ChunkSource([b"1e3099 ", b"unread"])
     values = iter_json_values(source, _options())
 
@@ -514,8 +511,9 @@ def test_framed_non_finite_json_number_does_not_wait_for_another_chunk(
     assert source.reads == 1
 
 
-def test_pending_utf8_frames_non_finite_json_number_without_another_read(
-) -> None:
+def test_pending_utf8_frames_non_finite_json_number_without_another_read() -> (
+    None
+):
     source = ChunkSource([b"1e3099\xc3", b"\xa5"])
     values = iter_json_values(source, _options())
 

@@ -445,7 +445,8 @@ def _protoc_arguments(
         f"--descriptor_set_out={descriptor_path}",
         "--include_imports",
         "--include_source_info",
-        *(str(path) for path in inputs.relative_files),
+        # Entrypoints are proto import names, not native filesystem paths.
+        *(path.as_posix() for path in inputs.relative_files),
     ]
 
 

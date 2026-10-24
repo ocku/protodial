@@ -48,6 +48,7 @@ def _json_error(
 
 def _is_incomplete_json_number(text: str) -> bool:
     """Return whether all of *text* is a valid, incomplete JSON number."""
+
     def is_digit(character: str) -> bool:
         return "0" <= character <= "9"
 
@@ -143,9 +144,7 @@ class _JsonValueReader:
 
     def _consume_whitespace(self) -> bool:
         """Consume leading whitespace and report whether any was found."""
-        length = len(self.buffer) - len(
-            self.buffer.lstrip(_JSON_WHITESPACE)
-        )
+        length = len(self.buffer) - len(self.buffer.lstrip(_JSON_WHITESPACE))
         if not length:
             return False
         self._advance(self.buffer[:length])
@@ -235,9 +234,7 @@ class _JsonValueReader:
             and not isinstance(value, bool)
         )
 
-    def _non_finite_number_may_continue(
-        self, error: NonFiniteNumber
-    ) -> bool:
+    def _non_finite_number_may_continue(self, error: NonFiniteNumber) -> bool:
         """Return whether an overflowed token may extend in the source."""
         return (
             error.may_extend

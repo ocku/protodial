@@ -1906,15 +1906,11 @@ def _truncate_human(
     )
 
 
-def _human_truncation_notice(
-    message: str, *, color: bool, width: int
-) -> str:
+def _human_truncation_notice(message: str, *, color: bool, width: int) -> str:
     """Render a terminal-cell-bounded truncation note with a hanging indent."""
     plain_prefix = "  note: "
     continuation = " " * _display_width(plain_prefix)
-    wrapped = _wrap_cells(
-        message, max(1, width - _display_width(plain_prefix))
-    )
+    wrapped = _wrap_cells(message, max(1, width - _display_width(plain_prefix)))
     # Avoid leaving a single trailing word on an otherwise empty continuation
     # when the preceding line can give up its final word. In particular, keep
     # the terminal phrase ``characters omitted`` together at narrow widths.

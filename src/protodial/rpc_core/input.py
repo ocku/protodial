@@ -7,12 +7,14 @@ import io
 import os
 import sys
 from collections.abc import Generator, Iterable
-from typing import TYPE_CHECKING, BinaryIO
+from threading import Lock
+from typing import TYPE_CHECKING, BinaryIO, cast
 
 from ..errors import CliError, LocalFileError
 from ..request_metadata.types import Metadata
 
 if TYPE_CHECKING:
+    from _typeshed import WriteableBuffer
     from google.protobuf.descriptor import Descriptor
 
 
@@ -50,6 +52,44 @@ def select_bytes_field(
     return fields[0].name
 
 
+class _StdinReader(io.RawIOBase):
+    """Close owned stdin without waiting for a concurrent blocking read."""
+
+    def __init__(self, source: io.FileIO) -> None:
+        super().__init__()
+        self._source = source
+        self._lock = Lock()
+        self._reading = False
+        self._closing = False
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: WriteableBuffer) -> int | None:
+        with self._lock:
+            if self._closing:
+                raise ValueError("read of closed stdin")
+            if self._reading:
+                raise RuntimeError("concurrent stdin reads are not supported")
+            self._reading = True
+        try:
+            return self._source.readinto(buffer)
+        finally:
+            with self._lock:
+                self._reading = False
+                if self._closing:
+                    self._source.close()
+
+    def close(self) -> None:
+        with self._lock:
+            self._closing = True
+            # Windows CRT close waits for an active read on the same fd.
+            # Let the daemon reader close it instead, if it ever returns.
+            if not self._reading:
+                self._source.close()
+        super().close()
+
+
 @contextlib.contextmanager
 def open_input(
     data: str | None,
@@ -71,8 +111,8 @@ def open_input(
             # grpcio consumes client streams on a daemon thread. Use an
             # unbuffered duplicate so a terminal RPC cannot leave that thread
             # holding BufferedReader's lock during interpreter shutdown.
-            with os.fdopen(os.dup(descriptor), "rb", buffering=0) as source:
-                yield source
+            with _StdinReader(io.FileIO(os.dup(descriptor), "rb")) as source:
+                yield cast(BinaryIO, source)
     elif data.startswith("@"):
         path = data[1:]
         try:

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2 — 2026-10-25
+
+- Fix insecure TLS relay I/O under concurrent traffic and high file-descriptor
+  counts.
+- Fix Windows handling of local proto imports and stdin shutdown after a
+  streaming RPC completes.
+
 ## 1.0.1 — 2026-10-25
 
 - Remove `--expand-headers`; use shell expansion for environment variables in

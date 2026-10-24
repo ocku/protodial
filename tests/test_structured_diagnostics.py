@@ -3504,10 +3504,7 @@ def test_rpc_semantic_item_truncation_reports_exact_net_omission() -> None:
 def test_rpc_truncation_notice_wraps_counts_with_a_hanging_indent(
     width: int, color: bool, omitted: int
 ) -> None:
-    message = (
-        f"rich status truncated; {omitted} "
-        "rich-detail characters omitted"
-    )
+    message = f"rich status truncated; {omitted} rich-detail characters omitted"
 
     rendered = _human_truncation_notice(
         message,
@@ -3680,9 +3677,7 @@ def test_rpc_truncation_tiny_limits_remain_utf8_ansi_and_width_safe(
         assert not rendered.endswith("\x1b")
         assert not re.search(r"\x1b\[[0-9;]*$", rendered)
         assert "\x1b" not in re.sub(r"\x1b\[[0-9;]*m", "", rendered)
-        assert all(
-            _display_width(line) <= width for line in plain.splitlines()
-        )
+        assert all(_display_width(line) <= width for line in plain.splitlines())
 
 
 @pytest.mark.parametrize("color", [False, True])
