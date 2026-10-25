@@ -3,7 +3,6 @@ from __future__ import annotations
 import gc
 import json
 import os
-import pty
 import select
 import shlex
 import shutil
@@ -35,6 +34,11 @@ from protodial.completion.command import (
 )
 from protodial.completion.engine import Candidate, complete
 from protodial.message_io import raw_input as raw_input_module
+
+try:
+    import pty
+except ImportError:  # pragma: no cover - Windows has no Unix PTYs
+    pty = None  # type: ignore[assignment]
 
 PROTO = """\
 syntax = "proto3";
@@ -69,6 +73,20 @@ def _values(candidates: list[Candidate]) -> list[str]:
 
 def _environment(tmp_path: Path) -> dict[str, str]:
     return {"HOME": str(tmp_path), "XDG_DATA_HOME": str(tmp_path / "data")}
+
+
+def _mkfifo_or_skip(path: Path) -> None:
+    mkfifo = getattr(os, "mkfifo", None)
+    if mkfifo is None:
+        pytest.skip("FIFOs are unavailable on this platform")
+    mkfifo(path)
+
+
+def _symlink_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target)
+    except (NotImplementedError, OSError):
+        pytest.skip("symbolic links are unavailable on this platform")
 
 
 def _saved_proto(tmp_path: Path) -> tuple[dict[str, str], Path]:
@@ -449,7 +467,7 @@ def test_reflection_rejects_fifo_tls_input_without_opening_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     certificate = tmp_path / "ca.pem"
-    os.mkfifo(certificate)
+    _mkfifo_or_skip(certificate)
     channels = 0
 
     def ready_channel(*_args: object) -> object:
@@ -476,7 +494,7 @@ def test_reflection_snapshots_a_symlinked_tls_file(
     target = tmp_path / "real-ca.pem"
     target.write_bytes(b"test CA bytes")
     linked = tmp_path / "ca.pem"
-    linked.symlink_to(target)
+    _symlink_or_skip(linked, target)
     observed: dict[str, object] = {}
 
     def ready_channel(
@@ -846,8 +864,8 @@ def test_saved_proto_scan_is_bounded_and_skips_unsafe_entries(
     environment, regular = _saved_proto(tmp_path)
     root = regular.parent
     (root / ".hidden.proto").write_text(PROTO, encoding="utf-8")
-    (root / "linked.proto").symlink_to(regular)
-    os.mkfifo(root / "blocked.proto")
+    _symlink_or_skip(root / "linked.proto", regular)
+    _mkfifo_or_skip(root / "blocked.proto")
     huge = root / "huge.proto"
     with huge.open("wb") as output:
         output.seek(1024 * 1024 + 1)
@@ -882,7 +900,7 @@ def test_saved_lexical_read_rejects_file_swapped_to_fifo(
         if Path(path) == source and not swapped:
             swapped = True
             source.rename(tmp_path / "original.proto")
-            os.mkfifo(source)
+            _mkfifo_or_skip(source)
         return original_open(  # type: ignore[call-overload]
             path, flags, *args, **kwargs
         )
@@ -923,7 +941,7 @@ def test_saved_fifo_import_is_bounded_by_compiler_timeout(
         "service Greeter { rpc SayHello(Request) returns (Reply); }",
         encoding="utf-8",
     )
-    os.mkfifo(proto.parent / "blocked.proto")
+    _mkfifo_or_skip(proto.parent / "blocked.proto")
     started = time.monotonic()
     fields = complete(
         [
@@ -981,7 +999,7 @@ def test_protoset_completion_uses_a_private_snapshot(
     supplied = original
     if through_symlink:
         supplied = tmp_path / "linked.protoset"
-        supplied.symlink_to(original)
+        _symlink_or_skip(supplied, original)
     scan = completion_engine._scan(
         [
             "--protoset",
@@ -1023,7 +1041,7 @@ def test_protoset_snapshot_rejects_file_swapped_to_fifo(
         if Path(path) == source and not swapped:
             swapped = True
             source.rename(tmp_path / "original.protoset")
-            os.mkfifo(source)
+            _mkfifo_or_skip(source)
         return original_open(  # type: ignore[call-overload]
             path, flags, *args, **kwargs
         )
@@ -1362,6 +1380,8 @@ def _read_pty(file_descriptor: int, duration: float = 0.2) -> bytes:
 def _readline_completion(
     tmp_path: Path, line: str, candidate: str
 ) -> list[str]:
+    if pty is None or not Path("/bin/bash").is_file():
+        pytest.skip("interactive Bash completion requires a Unix PTY")
     executable = tmp_path / "protodial"
     log = tmp_path / "readline-arguments.json"
     ready = tmp_path / "readline-completion-ready"
@@ -1548,6 +1568,8 @@ def test_bash_ansi_quote_completion_cannot_execute_substitution(
 def test_shell_adapter_honors_cursor_and_nospace(
     tmp_path: Path, shell: str
 ) -> None:
+    if os.name == "nt":
+        pytest.skip("Bash and Zsh adapters require a Unix-like shell")
     _executable, log, input_log = _fake_protodial(tmp_path)
     root = Path(__file__).parents[1]
     script = (
@@ -1639,6 +1661,8 @@ _protodial
 def test_shell_adapter_truncates_the_active_word_at_cursor(
     tmp_path: Path, shell: str, word_style: str
 ) -> None:
+    if os.name == "nt":
+        pytest.skip("Bash and Zsh adapters require a Unix-like shell")
     shell_executable = shutil.which(shell)
     if shell_executable is None:
         pytest.skip(f"{shell} is unavailable")
