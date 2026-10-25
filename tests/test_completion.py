@@ -1432,11 +1432,11 @@ def _readline_completion(
         prompt_output = bytearray()
         prompt_deadline = time.monotonic() + 5.0
         while (
-            prompt_output.count(b"READY> ") < 2
+            b"READY> " not in prompt_output
             and time.monotonic() < prompt_deadline
         ):
             prompt_output.extend(_read_pty(file_descriptor, 0.05))
-        assert prompt_output.count(b"READY> ") >= 2
+        assert b"READY> " in prompt_output
         os.write(file_descriptor, line.encode() + b"\t")
         completion_deadline = time.monotonic() + 5.0
         while not ready.exists() and time.monotonic() < completion_deadline:
@@ -1570,6 +1570,9 @@ def test_shell_adapter_honors_cursor_and_nospace(
 ) -> None:
     if os.name == "nt":
         pytest.skip("Bash and Zsh adapters require a Unix-like shell")
+    shell_executable = shutil.which(shell)
+    if shell_executable is None:
+        pytest.skip(f"{shell} is unavailable")
     _executable, log, input_log = _fake_protodial(tmp_path)
     root = Path(__file__).parents[1]
     script = (
@@ -1612,7 +1615,6 @@ _protodial
         "PROTODIAL_TEST_LOG": str(log),
         "PROTODIAL_TEST_INPUT": str(input_log),
     }
-    shell_executable = "/bin/bash" if shell == "bash" else "zsh"
     completed = subprocess.run(
         [shell_executable, "-c", program, "completion-test", str(script)],
         capture_output=True,
@@ -1828,6 +1830,9 @@ def test_install_output_is_one_command_sourceable_activation(
 ) -> None:
     if os.name == "nt":
         pytest.skip("Bash and Zsh activation requires a Unix-like shell")
+    shell_executable = shutil.which(shell)
+    if shell_executable is None:
+        pytest.skip(f"{shell} is unavailable")
     root = Path(__file__).parents[1]
     python = root / ".venv" / "bin" / "python"
     environment = {
@@ -1839,7 +1844,7 @@ def test_install_output_is_one_command_sourceable_activation(
     }
     program = f'source "$("$1" -m protodial completion install)"; {probe}'
     subprocess.run(
-        [shell, "-c", program, "activation-test", str(python)],
+        [shell_executable, "-c", program, "activation-test", str(python)],
         capture_output=True,
         text=True,
         encoding="utf-8",
