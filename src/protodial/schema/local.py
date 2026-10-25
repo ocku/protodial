@@ -452,6 +452,7 @@ def _protoc_arguments(
 
 def _compile_descriptor_set(
     inputs: _ProtoCompilerInputs,
+    timeout: float | None = None,
 ) -> descriptor_pb2.FileDescriptorSet:
     """Run protoc and decode its descriptor-set output."""
     with tempfile.TemporaryDirectory(
@@ -469,6 +470,7 @@ def _compile_descriptor_set(
             encoding="utf-8",
             errors="replace",
             check=False,
+            timeout=timeout,
         )
         compiler_output = (completed.stderr, completed.stdout)
         if completed.returncode:
@@ -501,7 +503,11 @@ def _registry_from_compilation(
 def _compile_proto_registry(command: Command) -> FileDescriptorRegistry:
     """Compile configured proto entrypoints into an indexed registry."""
     inputs = _resolve_compiler_inputs(command)
-    descriptor_set = _compile_descriptor_set(inputs)
+    timeout = getattr(command, "_completion_compile_timeout", None)
+    descriptor_set = _compile_descriptor_set(
+        inputs,
+        timeout=timeout if isinstance(timeout, (int, float)) else None,
+    )
     return _registry_from_compilation(descriptor_set, inputs.files)
 
 

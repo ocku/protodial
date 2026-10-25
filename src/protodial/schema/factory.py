@@ -16,6 +16,7 @@ def build_descriptor_source(
     channel: ReflectionChannel | None = None,
     metadata: Metadata | None = None,
     reflection_host: str = "",
+    reflection_deadline: float | None = None,
 ) -> DescriptorSource:
     """Build the schema source shared by invocation and discovery paths."""
 
@@ -39,6 +40,7 @@ def build_descriptor_source(
         grpc,
         getattr(local, "registry", None),
         reflection_host,
+        reflection_deadline,
     )
     return (
         CompositeDescriptorSource(local, reflection)

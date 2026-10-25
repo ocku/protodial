@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+## 1.1.0 — 2026-10-25
+
+- Add installable Bash and Zsh completion for commands, options, proto files,
+  reflected and local methods, schema symbols, fields, and enum values. Shell
+  scripts can be generated directly or installed to an XDG data directory.
+- Discover reusable protos through a bounded, stateless in-memory scan and
+  compile only the selected schema when descriptor details are needed.
+- Keep interactive completion responsive with short filesystem, compiler, and
+  server-reflection deadlines; unavailable reflection endpoints return in
+  roughly 0.3 seconds rather than waiting for normal RPC timeouts.
+
 ## 1.0.2 — 2026-10-25
 
 - Fix insecure TLS relay I/O under concurrent traffic and high file-descriptor
