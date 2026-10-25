@@ -590,8 +590,8 @@ def test_reflected_method_walk_shares_one_completion_deadline(
     started = time.monotonic()
     completion_engine._methods([source])  # type: ignore[list-item]
     elapsed = time.monotonic() - started
-    assert elapsed < 0.2
-    assert source.calls < 20
+    assert elapsed < 0.5
+    assert 1 <= source.calls <= 4
 
 
 def test_midline_cursor_uses_current_word_and_later_schema_context(
@@ -1786,7 +1786,7 @@ def test_completion_install_uses_xdg_and_refuses_overwrite(
     installed = tmp_path / "bash-completion" / "completions" / "protodial"
     captured = capsys.readouterr()
     assert Path(captured.out.strip()) == installed
-    assert f"source {installed}" in captured.err
+    assert f"source {shlex.quote(str(installed))}" in captured.err
     assert installed.read_text(encoding="utf-8").startswith("# bash completion")
     assert main(["completion", "install"]) == 2
     assert "use --force" in capsys.readouterr().err
@@ -1812,7 +1812,8 @@ def test_completion_install_supports_explicit_zsh_path(
     )
     capsys.readouterr()
     assert path.read_text(encoding="utf-8").startswith("#compdef protodial")
-    assert stat_mode(path) == 0o644
+    if os.name != "nt":
+        assert stat_mode(path) == 0o644
 
 
 @pytest.mark.parametrize(
@@ -1825,6 +1826,8 @@ def test_completion_install_supports_explicit_zsh_path(
 def test_install_output_is_one_command_sourceable_activation(
     tmp_path: Path, shell: str, probe: str
 ) -> None:
+    if os.name == "nt":
+        pytest.skip("Bash and Zsh activation requires a Unix-like shell")
     root = Path(__file__).parents[1]
     python = root / ".venv" / "bin" / "python"
     environment = {

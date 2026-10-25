@@ -1370,6 +1370,9 @@ def test_installed_cli_exits_when_server_terminates_stream_with_stdin_open(
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        # Keep this eligible for posix_spawn: forking while the in-process
+        # gRPC test server has active threads is unsafe on macOS.
+        close_fds=False,
     )
     assert process.stdin is not None
     assert process.stdout is not None
