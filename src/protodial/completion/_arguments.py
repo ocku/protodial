@@ -43,9 +43,7 @@ _SHARED_OPTIONS = (
     OptionSpec(
         ("--max-recv-message-size",), "maximum response bytes", "number"
     ),
-    OptionSpec(
-        ("--max-send-message-size",), "maximum request bytes", "number"
-    ),
+    OptionSpec(("--max-send-message-size",), "maximum request bytes", "number"),
     OptionSpec(("--compression",), "gRPC compression", "compression"),
     OptionSpec(("--keepalive-time",), "HTTP/2 keepalive interval", "number"),
     OptionSpec(("-A", "--user-agent"), "primary gRPC user agent", "text"),
@@ -254,4 +252,3 @@ def option_candidates(scan: Scan) -> list[Candidate]:
             if name.startswith(scan.current)
         )
     return unique_candidates(candidates)
-

@@ -147,9 +147,7 @@ def run_completion_command(
 def run_completion_protocol(argv: Sequence[str]) -> int:
     """Emit NUL-delimited candidate records for shell adapters."""
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
-    parser.add_argument(
-        "--protocol", choices=("protodial-v1",), required=True
-    )
+    parser.add_argument("--protocol", choices=("protodial-v1",), required=True)
     parser.add_argument("--shell", choices=tuple(_SCRIPTS), required=True)
     parser.add_argument("--cursor", type=int)
     parser.add_argument("--words-stdin", action="store_true")

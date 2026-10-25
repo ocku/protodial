@@ -46,5 +46,3 @@ def selected_method(scan: Scan) -> str | None:
         if path.count("/") == 1 and all(path.split("/")):
             return path
     return None
-
-

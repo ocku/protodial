@@ -94,10 +94,7 @@ def _walk_files(root: Path, suffix: str | None) -> Iterable[Path]:
         with entries:
             for entry in entries:
                 scanned += 1
-                if (
-                    scanned > _MAX_SCAN_ENTRIES
-                    or time.monotonic() >= deadline
-                ):
+                if scanned > _MAX_SCAN_ENTRIES or time.monotonic() >= deadline:
                     return
                 if entry.name.startswith("."):
                     continue
@@ -137,10 +134,7 @@ def _path_candidates(
         return []
     with entries:
         for index, entry in enumerate(entries):
-            if (
-                index >= _MAX_DIRECTORY_ENTRIES
-                or time.monotonic() >= deadline
-            ):
+            if index >= _MAX_DIRECTORY_ENTRIES or time.monotonic() >= deadline:
                 break
             if not entry.name.startswith(needle):
                 continue
@@ -216,7 +210,6 @@ def _sources(
     if not sources or union_saved_methods or saved_detail_fallback:
         sources.extend(saved_sources)
     return sources, opened
-
 
 
 def _value_candidates(

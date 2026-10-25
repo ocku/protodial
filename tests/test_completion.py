@@ -502,9 +502,7 @@ def test_reflection_snapshots_a_symlinked_tls_file(
     scan = completion_engine._scan(
         ["--cacert", str(linked), "grpcs://example.test:443/"]
     )
-    opened = completion_engine._reflection_source(
-        scan, _environment(tmp_path)
-    )
+    opened = completion_engine._reflection_source(scan, _environment(tmp_path))
     assert opened is not None
     snapshot = observed["path"]
     assert isinstance(snapshot, Path)
@@ -949,8 +947,7 @@ def test_explicit_proto_with_more_than_128_imports_still_completes(
         name = f"dependency-{index}.proto"
         imports.append(f'import "{name}";')
         (tmp_path / name).write_text(
-            'syntax = "proto3"; package broad; '
-            f"message Dependency{index} {{}}",
+            f'syntax = "proto3"; package broad; message Dependency{index} {{}}',
             encoding="utf-8",
         )
     entrypoint = tmp_path / "api.proto"
@@ -1667,10 +1664,7 @@ def test_shell_adapter_truncates_the_active_word_at_cursor(
     executable.chmod(0o755)
 
     if word_style == "quoted":
-        line = (
-            'protodial "--compression=gBAD extra" '
-            '--header "later value"'
-        )
+        line = 'protodial "--compression=gBAD extra" --header "later value"'
         left = 'protodial "--compression=g'
         words = [
             "protodial",
@@ -1680,10 +1674,7 @@ def test_shell_adapter_truncates_the_active_word_at_cursor(
         ]
         active = 1
     elif word_style == "escaped":
-        line = (
-            "protodial --compression=\\gBAD "
-            "--header later\\ value"
-        )
+        line = "protodial --compression=\\gBAD --header later\\ value"
         left = "protodial --compression=\\g"
         words = [
             "protodial",
