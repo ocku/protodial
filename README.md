@@ -33,63 +33,30 @@ source "$(protodial completion install)"
 
 Use `--shell bash` or `--shell zsh` when detection is unavailable. The command
 installs to an XDG data directory and prints its exact path on stdout, so the
-quoted command substitution above can source it without `eval`. It also prints
-the equivalent activation instruction on stderr and never edits shell startup
-files. Existing files are left untouched unless `--force` is passed. `--path
-FILE` selects an exact destination.
-
-Modern `bash-completion` installations load the XDG Bash directory in new
-shells. Zsh only discovers the XDG `site-functions` directory when it is in
-`fpath`. To make completion persistent when your shell does not search the
-installed directory, add the printed `source` command to your shell startup
-file. This edit is intentionally left to you rather than modifying startup
-files automatically.
+quoted command substitution above can source it without `eval`. Existing files
+are left untouched unless `--force` is passed. Use `--path FILE` to select an
+exact destination. The command never edits shell startup files.
 
 To load completion without installing it:
 
 ```console
 # Bash
-source /dev/stdin <<<"$(protodial completion bash)"
+source <(protodial completion bash)
 
 # Zsh
-source /dev/stdin <<<"$(protodial completion zsh)"
+source <(protodial completion zsh)
 ```
 
 Completion covers commands and options, local and reusable `.proto` files,
 services, methods, describe symbols, request and response fields, enum and
-boolean values, and raw bytes-field selectors. Schema candidates come from
-explicit `--proto`/`--protoset` inputs, the reusable proto directory, and
-server reflection when a target is available. Reusable protos are used only
-to suggest completions; they do not become implicit inputs to an RPC.
-Explicit descriptor inputs take normal CLI precedence, followed by live
-reflection when enabled; reusable protos are used only as a fallback
-for descriptor details when neither authoritative source is available. Method
-name completion unions live reflection with saved protos so offline and
-server-only methods remain discoverable; a name collision still resolves its
-fields and enum values from explicit descriptors or live reflection, never
-from the automatic saved-proto scan.
+boolean values, and file paths. Methods can come from explicit schemas, saved
+protos, or server reflection. Saved protos are suggestions only and do not
+become implicit RPC inputs.
 
 Put reusable files in `$XDG_DATA_HOME/protodial/protos` (or
-`~/.local/share/protodial/protos`). Each Tab press performs a fresh, in-memory
-scan: at most 512 regular `.proto` files, 4,096 directory entries, six nested
-directory levels, 4 MiB of source text, and 0.1 seconds. Hidden entries,
-symlinks, special files, and individual files larger than 1 MiB are skipped.
-Package, service, RPC, message, enum, and field names are extracted without
-running the protobuf compiler. Only the exact saved file selected by a method
-is compiled when field or enum details are requested. There is no completion
-cache to create, migrate, repair, or invalidate.
-
-Completion also skips descriptor-set files larger than 1 MiB. Explicit schema
-arguments still work normally for real commands; these conservative limits
-apply only while completing an interactive prompt.
-
-Reflection probes are capped at 0.2 seconds by default, including when larger
-connection or RPC timeouts appear on the command line. Set
-`PROTODIAL_COMPLETION_TIMEOUT` to a positive number of seconds to change this
-completion-only cap. Completion sends the reflection request directly instead
-of first waiting separately for channel readiness. The cap is one shared
-deadline across service listing and all lazy descriptor fetches rather than a
-fresh timeout for each reflected service.
+`~/.local/share/protodial/protos`). Filesystem and reflection work is bounded
+to keep completion responsive. Set `PROTODIAL_COMPLETION_TIMEOUT` to a positive
+number of seconds to override the default 0.2-second reflection deadline.
 
 ## Quick start
 
