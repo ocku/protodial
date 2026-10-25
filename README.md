@@ -18,9 +18,78 @@ uv tool install .
 protodial --version
 ```
 
-If the package is available on your package index, install version 1.0.0 with
-`uv tool install protodial==1.0.0` or `python -m pip install protodial==1.0.0`.
+If the package is available on your package index, install version 1.1.0 with
+`uv tool install protodial==1.1.0` or `python -m pip install protodial==1.1.0`.
 You can also run it as `python -m protodial`.
+
+### Shell completion
+
+Install and activate completion in the current Bash or Zsh (detected from
+`$SHELL`) with one sourceable command:
+
+```console
+source "$(protodial completion install)"
+```
+
+Use `--shell bash` or `--shell zsh` when detection is unavailable. The command
+installs to an XDG data directory and prints its exact path on stdout, so the
+quoted command substitution above can source it without `eval`. It also prints
+the equivalent activation instruction on stderr and never edits shell startup
+files. Existing files are left untouched unless `--force` is passed. `--path
+FILE` selects an exact destination.
+
+Modern `bash-completion` installations load the XDG Bash directory in new
+shells. Zsh only discovers the XDG `site-functions` directory when it is in
+`fpath`. To make completion persistent when your shell does not search the
+installed directory, add the printed `source` command to your shell startup
+file. This edit is intentionally left to you rather than modifying startup
+files automatically.
+
+To load completion without installing it:
+
+```console
+# Bash
+source /dev/stdin <<<"$(protodial completion bash)"
+
+# Zsh
+source /dev/stdin <<<"$(protodial completion zsh)"
+```
+
+Completion covers commands and options, local and reusable `.proto` files,
+services, methods, describe symbols, request and response fields, enum and
+boolean values, and raw bytes-field selectors. Schema candidates come from
+explicit `--proto`/`--protoset` inputs, the reusable proto directory, and
+server reflection when a target is available. Reusable protos are used only
+to suggest completions; they do not become implicit inputs to an RPC.
+Explicit descriptor inputs take normal CLI precedence, followed by live
+reflection when enabled; reusable protos are used only as a fallback
+for descriptor details when neither authoritative source is available. Method
+name completion unions live reflection with saved protos so offline and
+server-only methods remain discoverable; a name collision still resolves its
+fields and enum values from explicit descriptors or live reflection, never
+from the automatic saved-proto scan.
+
+Put reusable files in `$XDG_DATA_HOME/protodial/protos` (or
+`~/.local/share/protodial/protos`). Each Tab press performs a fresh, in-memory
+scan: at most 512 regular `.proto` files, 4,096 directory entries, six nested
+directory levels, 4 MiB of source text, and 0.1 seconds. Hidden entries,
+symlinks, special files, and individual files larger than 1 MiB are skipped.
+Package, service, RPC, message, enum, and field names are extracted without
+running the protobuf compiler. Only the exact saved file selected by a method
+is compiled when field or enum details are requested. There is no completion
+cache to create, migrate, repair, or invalidate.
+
+Completion also skips descriptor-set files larger than 1 MiB. Explicit schema
+arguments still work normally for real commands; these conservative limits
+apply only while completing an interactive prompt.
+
+Reflection probes are capped at 0.2 seconds by default, including when larger
+connection or RPC timeouts appear on the command line. Set
+`PROTODIAL_COMPLETION_TIMEOUT` to a positive number of seconds to change this
+completion-only cap. Completion sends the reflection request directly instead
+of first waiting separately for channel readiness. The cap is one shared
+deadline across service listing and all lazy descriptor fetches rather than a
+fresh timeout for each reflected service.
 
 ## Quick start
 
@@ -55,7 +124,8 @@ protodial --proto api.proto --proto-path protos -d @request.json \
 
 Invocation options precede the target. Discovery options follow `list` or
 `describe`. Run `protodial --help`, `protodial list --help`, or
-`protodial describe --help` for the full option reference.
+`protodial describe --help` for the full option reference. Run
+`protodial completion --help` for completion installation options.
 
 ## Schema discovery
 
@@ -248,9 +318,9 @@ servers. `-A` / `--user-agent` sets the primary gRPC user agent.
 ## Docker
 
 ```console
-docker build -t protodial:1.0.0 .
-docker run --rm protodial:1.0.0 --version
-docker run --rm protodial:1.0.0 -d '{"name":"Ada"}' \
+docker build -t protodial:1.1.0 .
+docker run --rm protodial:1.1.0 --version
+docker run --rm protodial:1.1.0 -d '{"name":"Ada"}' \
   grpc://host.docker.internal:50051/example.Greeter/SayHello
 ```
 

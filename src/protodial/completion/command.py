@@ -1,0 +1,194 @@
+"""Public completion commands and the private shell protocol."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import shlex
+import stat
+import sys
+import tempfile
+from collections.abc import Mapping, Sequence
+from importlib import resources
+from pathlib import Path
+
+_SCRIPTS = {
+    "bash": "protodial.bash",
+    "zsh": "_protodial",
+}
+COMPLETION_PROTOCOL_MARKER = "--protocol=protodial-v1"
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="protodial completion",
+        description="Generate or install shell completion for protodial.",
+        allow_abbrev=False,
+    )
+    subparsers = parser.add_subparsers(dest="action", required=True)
+    for shell in _SCRIPTS:
+        subparsers.add_parser(
+            shell,
+            help=f"print the {shell} completion script",
+            allow_abbrev=False,
+        )
+    install = subparsers.add_parser(
+        "install", help="install completion for the current shell"
+    )
+    install.add_argument("--shell", choices=tuple(_SCRIPTS))
+    install.add_argument(
+        "--path", type=Path, help="write to this file instead of the default"
+    )
+    install.add_argument(
+        "--force", action="store_true", help="replace an existing file"
+    )
+    return parser
+
+
+def _script(shell: str) -> str:
+    return (
+        resources.files("protodial.completion")
+        .joinpath(_SCRIPTS[shell])
+        .read_text(encoding="utf-8")
+    )
+
+
+def _detected_shell(environment: Mapping[str, str]) -> str | None:
+    name = Path(environment.get("SHELL", "")).name
+    return name if name in _SCRIPTS else None
+
+
+def _default_path(shell: str, environment: Mapping[str, str]) -> Path:
+    data_home = environment.get("XDG_DATA_HOME")
+    if data_home:
+        root = Path(data_home).expanduser()
+    else:
+        home = environment.get("HOME") or str(Path.home())
+        root = Path(home).expanduser() / ".local" / "share"
+    if shell == "bash":
+        return root / "bash-completion" / "completions" / "protodial"
+    return root / "zsh" / "site-functions" / "_protodial"
+
+
+def _atomic_install(path: Path, content: str, *, force: bool) -> None:
+    path = path.expanduser()
+    if path.exists() and not force:
+        raise FileExistsError(
+            f"completion file already exists: {path} (use --force to replace)"
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            prefix=f".{path.name}.",
+            dir=path.parent,
+            delete=False,
+        ) as temporary:
+            temporary.write(content)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+            temporary_name = temporary.name
+        os.chmod(
+            temporary_name,
+            stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH,
+        )
+        if force:
+            os.replace(temporary_name, path)
+            temporary_name = None
+        else:
+            try:
+                # A hard link publishes the complete inode and fails if a
+                # concurrent installer created the destination first.
+                os.link(temporary_name, path)
+            except FileExistsError:
+                raise FileExistsError(
+                    f"completion file already exists: {path} "
+                    "(use --force to replace)"
+                ) from None
+    finally:
+        if temporary_name is not None:
+            try:
+                Path(temporary_name).unlink()
+            except FileNotFoundError:
+                pass
+
+
+def run_completion_command(
+    argv: Sequence[str], environment: Mapping[str, str] | None = None
+) -> int:
+    """Run ``protodial completion`` without loading the RPC runtime."""
+    namespace = _parser().parse_args(argv)
+    if namespace.action in _SCRIPTS:
+        sys.stdout.write(_script(namespace.action))
+        return 0
+
+    values = os.environ if environment is None else environment
+    shell = namespace.shell or _detected_shell(values)
+    if shell is None:
+        _parser().error("cannot detect shell; pass --shell bash or --shell zsh")
+    path = namespace.path or _default_path(shell, values)
+    try:
+        _atomic_install(path, _script(shell), force=namespace.force)
+    except OSError as error:
+        _parser().error(str(error))
+    resolved_path = str(path.expanduser())
+    print(resolved_path)
+    print(
+        f"Installed protodial {shell} completion. Activate it with: "
+        f"source {shlex.quote(resolved_path)}",
+        file=sys.stderr,
+    )
+    return 0
+
+
+def run_completion_protocol(argv: Sequence[str]) -> int:
+    """Emit NUL-delimited candidate records for shell adapters."""
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    parser.add_argument(
+        "--protocol", choices=("protodial-v1",), required=True
+    )
+    parser.add_argument("--shell", choices=tuple(_SCRIPTS), required=True)
+    parser.add_argument("--cursor", type=int)
+    parser.add_argument("--words-stdin", action="store_true")
+    parser.add_argument("words", nargs=argparse.REMAINDER)
+    try:
+        namespace = parser.parse_args(argv)
+        if namespace.words_stdin:
+            data = sys.stdin.buffer.read(1024 * 1024 + 1)
+            if len(data) > 1024 * 1024:
+                return 0
+            parts = data.split(b"\0")
+            if parts[-1:] == [b""]:
+                parts.pop()
+            words = [part.decode("utf-8", "surrogateescape") for part in parts]
+        else:
+            words = namespace.words
+            if words[:1] == ["--"]:
+                words = words[1:]
+        from .engine import complete
+
+        candidates = complete(
+            words,
+            environment=os.environ,
+            cwd=Path.cwd(),
+            cursor=namespace.cursor,
+        )
+        output = sys.stdout.buffer
+        for candidate in candidates:
+            value = candidate.value.replace("\0", "")
+            description = candidate.description.replace("\0", "")
+            output.write(value.encode("utf-8", "surrogateescape"))
+            output.write(b"\0")
+            output.write(description.encode("utf-8", "replace"))
+            output.write(b"\0")
+            output.write(b"1" if candidate.append_space else b"0")
+            output.write(b"\0")
+        output.flush()
+    except (Exception, SystemExit):
+        # Completion must never damage an interactive prompt. Ordinary CLI
+        # commands retain their normal diagnostics; this private path is quiet.
+        return 0
+    return 0

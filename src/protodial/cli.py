@@ -582,6 +582,20 @@ def _main(argv: Sequence[str] | None = None) -> int:
     # diagnostic sink. Resolve this before the lazy grpc import in every mode.
     os.environ["GRPC_VERBOSITY"] = "NONE"
     arguments = tuple(sys.argv[1:] if argv is None else argv)
+    completion_actions = {"bash", "zsh", "install", "-h", "--help"}
+    if arguments[:1] == ("completion",) and (
+        len(arguments) == 1 or arguments[1] in completion_actions
+    ):
+        from .completion import run_completion_command
+
+        try:
+            return run_completion_command(arguments[1:])
+        except SystemExit as error:
+            return int(error.code) if isinstance(error.code, int) else 1
+    if arguments[:2] == ("__complete", "--protocol=protodial-v1"):
+        from .completion import run_completion_protocol
+
+        return run_completion_protocol(arguments[1:])
     (
         diagnostic_format,
         color,

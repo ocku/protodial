@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Iterable, Mapping, Sequence
 from importlib import import_module
 from types import ModuleType, SimpleNamespace
@@ -160,6 +161,7 @@ class ReflectionDatabase(descriptor_database.DescriptorDatabase):
         registry: FileDescriptorRegistry | None,
         wire_modules: dict[str, ReflectionWireModule],
         host: str = "",
+        deadline: float | None = None,
     ) -> None:
         super().__init__()
         self.version: str | None = None
@@ -178,6 +180,7 @@ class ReflectionDatabase(descriptor_database.DescriptorDatabase):
         self._grpc = grpc
         self._wire_modules = wire_modules
         self._host = host
+        self._deadline = deadline
 
     def _record_version(self, version: str) -> None:
         """Record and immediately report the negotiated wire version."""
@@ -230,10 +233,15 @@ class ReflectionDatabase(descriptor_database.DescriptorDatabase):
         request = wire.ServerReflectionRequest(
             host=self._host, **request_fields
         )
+        timeout = self._timeout
+        if self._deadline is not None:
+            timeout = min(timeout, self._deadline - time.monotonic())
+            if timeout <= 0:
+                raise TimeoutError("reflection completion deadline exceeded")
         call = rpc(
             iter((request,)),
             metadata=self._metadata,
-            timeout=self._timeout,
+            timeout=timeout,
         )
         return request, call
 
@@ -534,9 +542,10 @@ class ReflectionDescriptorSource(IndexedDescriptorSource):
         grpc: GrpcModule,
         registry: FileDescriptorRegistry | None = None,
         host: str = "",
+        deadline: float | None = None,
     ) -> None:
         database = reflection_database(
-            channel, metadata, timeout, grpc, registry, host
+            channel, metadata, timeout, grpc, registry, host, deadline
         )
         super().__init__(
             descriptor_pool.DescriptorPool(database),
@@ -553,6 +562,7 @@ def reflection_database(
     grpc: GrpcModule,
     registry: FileDescriptorRegistry | None = None,
     host: str = "",
+    deadline: float | None = None,
 ) -> ReflectionDatabase:
     """Build a reflection database supporting v1 and v1alpha."""
     from grpc_reflection.v1alpha import reflection_pb2 as wire_v1alpha
@@ -567,4 +577,5 @@ def reflection_database(
         registry,
         {"v1": wire_v1, "v1alpha": wire_v1alpha_typed},
         host,
+        deadline,
     )

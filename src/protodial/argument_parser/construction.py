@@ -23,9 +23,11 @@ Examples:
   protodial describe [options...] TARGET SYMBOL
   protodial describe [options...] grpc://HOST/SYMBOL
   protodial describe [options...] grpc://HOST/SERVICE/METHOD
+  protodial completion bash|zsh
+  protodial completion install [--shell bash|zsh]
 
-Run `protodial list --help` or `protodial describe --help` for discovery
-options."""
+Run `protodial list --help`, `protodial describe --help`, or
+`protodial completion --help` for command-specific options."""
 
 
 def build_parser() -> argparse.ArgumentParser:

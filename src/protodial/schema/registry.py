@@ -10,6 +10,7 @@ from google.protobuf import descriptor_database, descriptor_pb2, descriptor_pool
 from google.protobuf.descriptor import (
     Descriptor,
     EnumDescriptor,
+    EnumValueDescriptor,
     FileDescriptor,
     MethodDescriptor,
 )
@@ -75,7 +76,7 @@ class _DescriptorIndexBuilder:
     def visit_enum(self, enum: EnumDescriptor) -> None:
         self.add(enum)
         for value in enum.values:
-            self.add(value)
+            self.symbols.setdefault(_enum_value_full_name(value), value)
 
     def visit_message(self, message: Descriptor) -> None:
         self.add(message)
@@ -267,7 +268,7 @@ class IndexedDescriptorSource:
 
         try:
             file_descriptor = self._pool.FindFileContainingSymbol(lookup_name)
-        except KeyError:
+        except (KeyError, TypeError):
             return None
         _register_source_file_tree(file_descriptor, self._file_protos)
         return _find_symbol_in_file(file_descriptor, dotted_name)
@@ -321,7 +322,7 @@ class _ExactSymbolFinder:
             (
                 value
                 for value in enum.values
-                if getattr(value, "full_name", None) == self.full_name
+                if _enum_value_full_name(value) == self.full_name
             ),
             None,
         )
@@ -425,9 +426,21 @@ def _component_suffix(full_name: str, suffix: str) -> bool:
 
 def _symbol_full_name(symbol: DescriptorSymbol) -> str:
     full_name = getattr(symbol, "full_name", None)
+    if full_name is None and isinstance(symbol, EnumValueDescriptor):
+        return _enum_value_full_name(symbol)
     if not isinstance(full_name, str):
         raise TypeError(f"descriptor {type(symbol).__name__} has no full name")
     return full_name
+
+
+def _enum_value_full_name(value: EnumValueDescriptor) -> str:
+    enum = value.type
+    scope = (
+        enum.containing_type.full_name
+        if enum.containing_type is not None
+        else enum.file.package
+    )
+    return f"{scope}.{value.name}" if scope else value.name
 
 
 def _is_method(symbol: DescriptorSymbol) -> TypeGuard[MethodDescriptor]:
