@@ -12,6 +12,7 @@ import time
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from google.protobuf import descriptor_pb2, message_factory
@@ -23,6 +24,7 @@ import protodial.completion.engine as completion_engine
 import protodial.schema.factory as schema_factory_module
 import protodial.transport as transport_module
 from protodial.cli import main
+from protodial.commands.models import Command
 from protodial.completion._saved_protos import (
     ScanBudget,
     parse_proto,
@@ -34,6 +36,7 @@ from protodial.completion.command import (
 )
 from protodial.completion.engine import Candidate, complete
 from protodial.message_io import raw_input as raw_input_module
+from protodial.schema.local import local_descriptor_source
 
 try:
     import pty
@@ -656,13 +659,20 @@ def _collision_proto(field: str, enum_value: str) -> str:
 def _compiled_source(tmp_path: Path, name: str, proto: str) -> object:
     path = tmp_path / name
     path.write_text(proto, encoding="utf-8")
-    environment = {
-        "HOME": str(tmp_path / "isolated-home"),
-        "XDG_DATA_HOME": str(tmp_path / "isolated-data"),
-    }
-    return completion_engine._local_sources(
-        completion_engine._scan(["--proto", str(path), ""]), environment
-    )[0]
+    command = cast(
+        Command,
+        cast(
+            object,
+            SimpleNamespace(
+                schema=SimpleNamespace(
+                    proto=(str(path),),
+                    proto_path=(),
+                    protoset=(),
+                )
+            ),
+        ),
+    )
+    return local_descriptor_source(command)
 
 
 def _write_protoset(tmp_path: Path, name: str = "schema.protoset") -> Path:
