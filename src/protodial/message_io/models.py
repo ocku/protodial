@@ -78,6 +78,21 @@ class MessageParseError(MessageError):
     """A request message could not be parsed."""
 
 
+class JsonMessageSchemaError(MessageParseError):
+    """Valid JSON could not be mapped to a protobuf request message."""
+
+    def __init__(
+        self, message_index: int, message_type: str, reason: str
+    ) -> None:
+        self.message_index = message_index
+        self.message_type = message_type
+        self.reason = reason
+        super().__init__(
+            f"JSON request {message_index} does not match the ProtoJSON "
+            f"schema for {message_type}: {reason}"
+        )
+
+
 class MessageTooLarge(MessageError):
     """A request exceeds a configured input or send limit."""
 

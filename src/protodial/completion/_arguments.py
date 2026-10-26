@@ -13,6 +13,16 @@ class Candidate:
     value: str
     description: str = ""
     append_space: bool = True
+    display: str | None = None
+
+    @property
+    def display_text(self) -> str:
+        """Return a menu label which keeps the candidate itself visible."""
+        if self.display is not None:
+            return self.display
+        if self.description:
+            return f"{self.value}\n\u21b3 {self.description}"
+        return self.value
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,21 +244,48 @@ def filter_candidates(
                     value,
                     candidate.description,
                     candidate.append_space,
+                    candidate.display,
                 )
             )
     return unique_candidates(result)
 
 
-def option_candidates(scan: Scan) -> list[Candidate]:
+def option_candidates(
+    scan: Scan, options: Iterable[OptionSpec] | None = None
+) -> list[Candidate]:
+    """Return one long-form row per option, including any short alias."""
+    specs = tuple(_options(scan.mode) if options is None else options)
+    preferred_names = tuple(
+        next(
+            (name for name in option.names if name.startswith("--")),
+            option.names[0],
+        )
+        for option in specs
+    )
+    width = max((len(name) for name in preferred_names), default=0)
     candidates: list[Candidate] = []
-    for option in _options(scan.mode):
+    for option, preferred in zip(specs, preferred_names, strict=True):
         if not option.repeatable and any(
             name in scan.flags for name in option.names
         ):
             continue
-        candidates.extend(
-            Candidate(name, option.description)
-            for name in option.names
-            if name.startswith(scan.current)
+        if not any(name.startswith(scan.current) for name in option.names):
+            continue
+        short = next(
+            (
+                name
+                for name in option.names
+                if name.startswith("-") and not name.startswith("--")
+            ),
+            "",
+        )
+        candidates.append(
+            Candidate(
+                preferred,
+                option.description,
+                display=(
+                    f"{preferred:<{width}}  {short:<2}  -- {option.description}"
+                ),
+            )
         )
     return unique_candidates(candidates)

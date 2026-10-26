@@ -21,7 +21,10 @@ from protodial import cli
 from protodial.argument_parser import parse_arguments
 from protodial.errors import CliError
 from protodial.message_io import iter_json_values
-from protodial.message_io.models import MessageParseError
+from protodial.message_io.models import (
+    JsonMessageSchemaError,
+    MessageParseError,
+)
 from protodial.presentation import _graphemes as grapheme_module
 from protodial.presentation._graphemes import (
     grapheme_boundaries,
@@ -1572,6 +1575,51 @@ def test_json_parse_error_retains_json_remediation() -> None:
     assert json.loads(render_json(event, 1))["help"] == [
         "validate JSON input with `jq .`"
     ]
+
+
+def test_valid_json_schema_error_names_expected_protojson_message() -> None:
+    command = parse_arguments(
+        [
+            "--data",
+            '{"a": "b"}',
+            "grpc://localhost:50051/example.Service/Call",
+        ]
+    )
+    error = JsonMessageSchemaError(
+        1,
+        "example.Request",
+        'Message type "example.Request" has no field named "a"',
+    )
+
+    event = ordinary_error_event(error, command)
+    human = render_human(event)
+    machine = json.loads(render_json(event, 1))
+
+    assert event.message == (
+        "request body is valid JSON but does not match the ProtoJSON schema "
+        "for example.Request"
+    )
+    assert event.causes == (
+        'request 1: Message type "example.Request" has no field named "a"',
+    )
+    assert event.help == (
+        "match field names and values to the example.Request schema",
+    )
+    assert event.fields == {
+        "kind": "protojson_schema",
+        "request_type": "example.Request",
+        "request_index": 1,
+    }
+    assert "validate JSON input with `jq .`" not in human
+    assert machine["message"] == event.message
+    assert machine["causes"] == list(event.causes)
+
+    narrow_lines = render_human(event, width=40).splitlines()
+    assert narrow_lines[0] == f"protodial: (E2101) {event.message}"
+    reason_line = next(
+        line for line in narrow_lines if line.startswith("  reason:")
+    )
+    assert reason_line == (f"  reason: {event.causes[0]}")
 
 
 @pytest.mark.parametrize("data", ["-", "@-"])

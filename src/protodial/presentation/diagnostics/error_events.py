@@ -6,6 +6,7 @@ import pathlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import singledispatch
+from typing import TYPE_CHECKING
 
 from ...commands.models import Command
 from ...commands.operations import Describe, Invoke
@@ -28,6 +29,9 @@ from .models import (
     DiagnosticSpan,
     DiagnosticValue,
 )
+
+if TYPE_CHECKING:
+    from ...message_io.models import JsonMessageSchemaError
 
 _DECLARED_DEPENDENCIES = {
     "cryptography": "cryptography",
@@ -508,6 +512,32 @@ def _describe_message_parse(
     )
 
 
+def _describe_json_message_schema(
+    error: JsonMessageSchemaError, context: _ErrorContext
+) -> _ErrorPresentation:
+    """Distinguish valid JSON from an invalid ProtoJSON message shape."""
+    command = context.command
+    span = (
+        _input_span(command, context.message) if command is not None else None
+    )
+    return _ErrorPresentation(
+        "input.invalid",
+        "request body is valid JSON but does not match the ProtoJSON schema "
+        f"for {error.message_type}",
+        "E2101",
+        fields={
+            "kind": "protojson_schema",
+            "request_type": error.message_type,
+            "request_index": error.message_index,
+        },
+        spans=(span,) if span is not None else (),
+        causes=(f"request {error.message_index}: {error.reason}",),
+        help=(
+            f"match field names and values to the {error.message_type} schema",
+        ),
+    )
+
+
 def _describe_message_error(
     error: BaseException, context: _ErrorContext
 ) -> _ErrorPresentation:
@@ -625,8 +655,14 @@ def _describe_with_message_errors(
     error: BaseException, context: _ErrorContext
 ) -> _ErrorPresentation:
     """Dispatch after lazily loading message exception types."""
-    from ...message_io.models import MessageError, MessageParseError
+    from ...message_io.models import (
+        JsonMessageSchemaError,
+        MessageError,
+        MessageParseError,
+    )
 
+    if isinstance(error, JsonMessageSchemaError):
+        return _describe_json_message_schema(error, context)
     if isinstance(error, MessageParseError):
         return _describe_message_parse(error, context)
     if isinstance(error, MessageError):

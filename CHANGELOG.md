@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 1.1.1 — 2026-10-26
+
+- Make completion installation idempotent and install Zsh completions into a
+  configured completion directory when available, so fresh shells discover
+  them without a manual `source` command.
+- Show one long-form row per CLI option with its short alias and description,
+  and keep values visible alongside context for methods and all other
+  completion candidates.
+- Distinguish malformed JSON from valid JSON that does not match the RPC's
+  ProtoJSON request schema, naming the expected protobuf message type and
+  keeping the diagnostic and its reason on readable single lines.
+
 ## 1.1.0 — 2026-10-25
 
 - Add installable Bash and Zsh completion for commands, options, proto files,
