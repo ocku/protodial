@@ -14,10 +14,8 @@ sent after the response body. A bare `>` or `<` terminates its metadata block.
 `never` are explicit overrides. Color never applies to stdout or JSON
 diagnostics.
 
-RPC failures put actionable structured server details first, as response data
-is shown before a successful terminal summary. One compact failure line then
-gives the status, timing, and message counts, immediately followed by its reason
-and canonical gRPC method:
+RPC failures show structured server details first, followed by the status,
+timing, message counts, reason, and canonical method:
 
 ```text
 ValidateRequest.resource: resource must not be empty
@@ -31,21 +29,10 @@ events report the resolved, fully qualified `package.Service/Method`. Human
 failures omit the network target to keep the call context compact; schema-v1
 JSON retains `context.target` for automation.
 
-Rich details have an explicit human-presentation priority. Corrective
-violations (`BadRequest`, `PreconditionFailure`, and `QuotaFailure`) lead;
-compact error, resource, retry, request, help, and localized-message context
-follows; `DebugInfo` and unknown or bulk details come last. Wire order remains
-stable among details in the same class. This ordering also determines which
-details receive scarce space when a human diagnostic must be truncated.
-
-The same 64 KiB guard truncates other human diagnostics structurally rather
-than as a text prefix. A bounded headline, highlighted source spans, and
-explicit `help` actions are reserved first. Causes and corrective rich details
-follow, then contextual details and notes, metadata, and finally debug or
-unknown bulk details. Selected blocks keep their normal display order, so a
-large early cause or source excerpt cannot hide concise remediation that comes
-later. The final note reports the exact net character reduction from the
-complete rendering.
+Diagnostics are limited to 65,536 characters. Human output prioritizes the
+headline, source highlights, remediation, and corrective details such as `BadRequest`,
+`PreconditionFailure`, and `QuotaFailure` over metadata and debug information.
+A truncation note reports the number of omitted characters.
 
 ## Request input errors
 
@@ -53,8 +40,6 @@ Request parsing errors use `input.invalid` with code `E2101`. Malformed JSON
 reports that the request body is not valid JSON, with a source location when
 available. Valid JSON that cannot be mapped to the request message instead
 names the expected ProtoJSON schema and gives a field or value failure reason.
-Human headlines and causes remain on single lines even when the protobuf
-parser's reason contains embedded newlines.
 
 For a ProtoJSON schema mismatch, JSON diagnostics additionally include
 `context.kind: "protojson_schema"`, `context.request_type` (the fully qualified
@@ -66,11 +51,6 @@ human wording. Both cases retain exit code 1.
 
 `--diagnostic-format json` writes one compact JSON object per stderr line and
 flushes every event.
-
-The CLI suppresses grpcio C-core logging before grpcio is loaded in both
-human and JSON modes; those native writes bypass Python's diagnostic stream
-and cannot be represented as schema-v1 events. RPC failures remain available as normal `rpc.failed`
-diagnostics.
 
 Each object has these required fields:
 
@@ -93,8 +73,8 @@ Binary values use `{"encoding":"base64","data":"..."}`. Non-finite numbers
 are rejected. No event contains a wall-clock timestamp; `sequence` provides
 ordering and relevant durations use numeric seconds in context.
 
-Untruncated `details` always retain their original wire order. If the 64 KiB
-diagnostic limit requires truncation, protodial retains the highest-priority
+Untruncated `details` always retain their original wire order. If the diagnostic
+limit requires truncation, protodial retains the highest-priority
 whole details that fit, in their original relative order. A final
 `protodial.truncated` detail records `omitted_detail_indexes` in wire order,
 `original_detail_count`, an optional serialized preview, and the exact number
@@ -121,4 +101,3 @@ Human wording and styling are not an automation interface.
 
 Human rendering escapes terminal controls, carriage returns, line separators,
 and bidirectional formatting controls before adding ANSI styling.
-Program-authored output uses an ASCII scaffold and contains no emoji.

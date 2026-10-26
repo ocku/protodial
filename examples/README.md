@@ -22,12 +22,7 @@ requirement.
 ```
 
 The runner builds each image from its own Dockerfile, starts the containers,
-and waits for their health checks. Other runner commands are:
-
-```console
-./examples/run.sh logs
-./examples/run.sh down
-```
+and waits for their health checks.
 
 Runner and server logs use UTC timestamps and stable `event=...` names. Server
 RPC completion events include status, message counts where applicable, and
@@ -55,18 +50,10 @@ Run every call sequence:
 ./examples/call.sh all
 ```
 
-The call scripts separate demonstrations with plain `== ... ==` headings.
-These headings are not timestamped log records; only `protodial` itself writes
-diagnostics, using the human or NDJSON format selected for the command.
-
-Run one example:
+Run one example by name:
 
 ```console
 ./examples/call.sh hello
-./examples/call.sh streaming
-./examples/call.sh errors
-./examples/call.sh formats
-./examples/call.sh deadlines
 ```
 
 The scripts use `protodial` from `PATH`, then `.venv/bin/protodial`, then
