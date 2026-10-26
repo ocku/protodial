@@ -244,6 +244,7 @@ def _value_candidates(
                 f"@{item.value}",
                 item.description,
                 item.append_space,
+                item.display,
             )
             for item in _path_candidates(prefix[1:], cwd)
         ]
@@ -276,6 +277,7 @@ def _value_candidates(
                             f"{name}={item.value}",
                             item.description,
                             item.append_space,
+                            item.display,
                         )
                         for item in _path_candidates(path_prefix, cwd)
                     ]
@@ -294,6 +296,7 @@ def _value_candidates(
                 f"{assignment}{item.value}",
                 item.description,
                 item.append_space,
+                item.display,
             )
             for item in values
         ]
@@ -303,12 +306,11 @@ def _value_candidates(
 def _completion_command(scan: _Scan) -> list[Candidate]:
     if not scan.positionals:
         if scan.current.startswith("-"):
-            return _filter(
+            return _option_candidates(
+                scan,
                 (
-                    Candidate("-h", "show completion help"),
-                    Candidate("--help", "show completion help"),
+                    _Option(("-h", "--help"), "show completion help"),
                 ),
-                scan.current,
             )
         return _filter(
             (
@@ -328,15 +330,14 @@ def _completion_command(scan: _Scan) -> list[Candidate]:
             if shell.startswith(prefix)
         ]
     if scan.current.startswith("-"):
-        return _filter(
+        return _option_candidates(
+            scan,
             (
-                Candidate("-h", "show install help"),
-                Candidate("--help", "show install help"),
-                Candidate("--shell", "shell to install for"),
-                Candidate("--path", "destination file"),
-                Candidate("--force", "replace existing file"),
+                _Option(("-h", "--help"), "show install help"),
+                _Option(("--shell",), "shell to install for"),
+                _Option(("--path",), "destination file"),
+                _Option(("--force",), "replace existing file"),
             ),
-            scan.current,
         )
     previous = scan.positionals[-1] if scan.positionals else ""
     if previous == "--shell":
@@ -371,7 +372,11 @@ def _method_target_candidates(
     )
     try:
         return [
-            Candidate(f"{base}/{item.value}", item.description)
+            Candidate(
+                f"{base}/{item.value}",
+                item.description,
+                display=f"{item.value}\n\u21b3 {item.description}",
+            )
             for item in _methods(sources, method_prefix)
             if item.value.startswith(method_prefix)
         ]
@@ -415,7 +420,11 @@ def _discovery_url_candidates(
         else:
             candidates = _symbols(sources, prefix)
         return [
-            Candidate(f"{base}/{item.value}", item.description)
+            Candidate(
+                f"{base}/{item.value}",
+                item.description,
+                display=f"{item.value}\n\u21b3 {item.description}",
+            )
             for item in candidates
             if item.value.startswith(prefix)
         ]

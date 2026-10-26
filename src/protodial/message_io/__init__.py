@@ -5,6 +5,7 @@ from .json_input import JSON_READ_SIZE, iter_json_requests, iter_json_values
 from .models import (
     InputBufferOptions,
     JsonInputOptions,
+    JsonMessageSchemaError,
     JsonOutputOptions,
     JsonScalar,
     JsonValue,
@@ -33,6 +34,7 @@ __all__ = [
     "InputBufferOptions",
     "JSON_READ_SIZE",
     "JsonInputOptions",
+    "JsonMessageSchemaError",
     "JsonOutputOptions",
     "JsonScalar",
     "JsonValue",

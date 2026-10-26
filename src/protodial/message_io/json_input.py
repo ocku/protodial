@@ -18,6 +18,7 @@ from .json_decoding import (
 from .limits import limit
 from .models import (
     JsonInputOptions,
+    JsonMessageSchemaError,
     JsonValue,
     MessageParseError,
     MessageTooLarge,
@@ -369,8 +370,11 @@ def _parse_json_message(
             descriptor_pool=pool,
         )
     except (ValueError, TypeError, json_format.ParseError) as error:
-        raise MessageParseError(
-            f"invalid JSON request {message_index}: {error}"
+        reason = " ".join(str(error).replace("\\n", " ").split())
+        raise JsonMessageSchemaError(
+            message_index,
+            message_class.DESCRIPTOR.full_name,
+            reason,
         ) from error
 
 

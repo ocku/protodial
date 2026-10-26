@@ -203,6 +203,10 @@ def _is_nonnegative_integer(value: object) -> bool:
     return _is_integer(value) and cast(int, value) >= 0
 
 
+def _is_positive_integer(value: object) -> bool:
+    return _is_integer(value) and cast(int, value) >= 1
+
+
 def _is_status(value: object) -> bool:
     if not isinstance(value, Mapping):
         return False
@@ -249,7 +253,14 @@ _CONTEXT_SCHEMAS: Mapping[
     ),
     "schema.input_invalid": (frozenset(), {}),
     "schema.symbol_not_found": (frozenset(), {}),
-    "input.invalid": (frozenset(), {}),
+    "input.invalid": (
+        frozenset(),
+        {
+            "kind": ("a string", _is_string),
+            "request_type": ("a string", _is_string),
+            "request_index": ("a positive integer", _is_positive_integer),
+        },
+    ),
     "transport.failed": (frozenset(), {}),
     "dependency.unavailable": (frozenset(), {}),
     "internal.failed": (frozenset(), {}),

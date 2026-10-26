@@ -15,6 +15,7 @@ from google.protobuf import (
 )
 
 from protodial.message_io import (
+    JsonMessageSchemaError,
     MessageParseError,
     MessageTooLarge,
     TruncatedFrameBody,
@@ -641,8 +642,13 @@ def test_json_unknown_field_control_and_buffer_limit() -> None:
     strict = iter_json_requests(
         io.BytesIO(b'{"unknown": true}'), False, MESSAGE, POOL, _options()
     )
-    with pytest.raises(MessageParseError, match="unknown"):
+    with pytest.raises(JsonMessageSchemaError, match="unknown") as raised:
         next(strict)
+    assert raised.value.message_index == 1
+    assert raised.value.message_type == "messages_test.Payload"
+    assert "no field named" in raised.value.reason
+    assert "\n" not in raised.value.reason
+    assert "\\n" not in raised.value.reason
 
     permissive = iter_json_requests(
         io.BytesIO(b'{"unknown": true}'),

@@ -28,9 +28,9 @@ _protodial()
         | command protodial __complete --protocol=protodial-v1 --shell zsh \
             --cursor "$((CURRENT - 2))" --words-stdin 2>/dev/null)
     (( ${#continuing_values} )) \
-        && compadd -S '' -d continuing_descriptions -- \
+        && compadd -l -S '' -d continuing_descriptions -- \
             "${continuing_values[@]}"
-    (( ${#values} )) && compadd -d descriptions -- "${values[@]}"
+    (( ${#values} )) && compadd -l -d descriptions -- "${values[@]}"
     return 0
 }
 

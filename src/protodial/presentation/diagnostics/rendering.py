@@ -721,13 +721,19 @@ def _annotation_lines(
     role: str,
     color: bool,
     width: int,
+    wrap: bool = True,
 ) -> list[str]:
     if not value.strip():
         return []
     plain_prefix = f"  {label}: "
     styled_prefix = f"  {_style(label, role, color)}: "
     indent_width = _display_width(plain_prefix)
-    wrapped = _wrap_cells(_safe(value), max(1, width - indent_width))
+    safe_value = _safe(value)
+    wrapped = (
+        _wrap_cells(safe_value, max(1, width - indent_width))
+        if wrap
+        else [safe_value]
+    )
     return [
         styled_prefix + _style_semantic_text(wrapped[0], color),
         *(
@@ -768,7 +774,12 @@ def _rpc_annotation_lines(
 
 
 def _headline_lines(
-    event: DiagnosticEvent, message: str, *, color: bool, width: int
+    event: DiagnosticEvent,
+    message: str,
+    *,
+    color: bool,
+    width: int,
+    wrap: bool = True,
 ) -> list[str]:
     severity = event.severity.value
     label: str | None = None
@@ -810,6 +821,9 @@ def _headline_lines(
         plain_prefix = "* "
         styled_prefix = _style("*", severity, color) + " "
     indent_width = _display_width(plain_prefix)
+
+    if not wrap:
+        return [styled_prefix + _style_semantic_text(message, color)]
 
     # Extension codes are intentionally unrestricted. If one makes the label
     # consume most (or all) of the terminal, a conventional hanging indent
@@ -1065,8 +1079,16 @@ def render_human(
     if event.name == "rpc.failed":
         return _render_rpc_failure(event, color=color, width=width)
     severity = event.severity.value
+    preserve_schema_lines = (
+        event.name == "input.invalid"
+        and event.fields.get("kind") == "protojson_schema"
+    )
     lines = _headline_lines(
-        event, _event_message(event), color=color, width=width
+        event,
+        _event_message(event),
+        color=color,
+        width=width,
+        wrap=not preserve_schema_lines,
     )
     for span in event.spans:
         lines.extend(
@@ -1080,6 +1102,7 @@ def render_human(
                 role="strong",
                 color=color,
                 width=width,
+                wrap=not preserve_schema_lines,
             )
         )
     for help_item in event.help:
@@ -2100,6 +2123,10 @@ def truncate_generic_human(
         return rendered
 
     severity = event.severity.value
+    preserve_schema_lines = (
+        event.name == "input.invalid"
+        and event.fields.get("kind") == "protojson_schema"
+    )
     groups: list[_HumanTruncationGroup] = []
     next_order = 0
 
@@ -2128,7 +2155,13 @@ def truncate_generic_human(
     add_group(
         0,
         "\n".join(
-            _headline_lines(event, bounded_message, color=color, width=width)
+            _headline_lines(
+                event,
+                bounded_message,
+                color=color,
+                width=width,
+                wrap=not preserve_schema_lines,
+            )
         ),
     )
 
@@ -2150,6 +2183,7 @@ def truncate_generic_human(
             role="strong",
             color=color,
             width=width,
+            wrap=not preserve_schema_lines,
         )
         if lines:
             add_group(2, "\n".join(lines))

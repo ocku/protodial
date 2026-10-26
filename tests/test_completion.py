@@ -126,6 +126,56 @@ def test_completion_offers_commands_options_and_static_choices(
     ) == ["--compression=gzip"]
 
 
+def test_option_completion_uses_one_long_form_row_with_short_alias(
+    tmp_path: Path,
+) -> None:
+    candidates = complete(
+        ["-"], environment=_environment(tmp_path), cwd=tmp_path
+    )
+    values = _values(candidates)
+    assert "--help" in values
+    assert "--insecure" in values
+    assert "--data" in values
+    assert "--include" in values
+    assert "-h" not in values
+    assert "-k" not in values
+    assert "-d" not in values
+    assert "-i" not in values
+    data = next(item for item in candidates if item.value == "--data")
+    assert "--data" in data.display_text
+    assert "-d" in data.display_text
+    assert "-- request data or @file" in data.display_text
+    assert _values(
+        complete(["-d"], environment=_environment(tmp_path), cwd=tmp_path)
+    ) == ["--data"]
+    assert _values(
+        complete(
+            ["completion", "-h"],
+            environment=_environment(tmp_path),
+            cwd=tmp_path,
+        )
+    ) == ["--help"]
+
+
+def test_non_option_display_keeps_value_above_its_context(
+    tmp_path: Path,
+) -> None:
+    environment, _ = _saved_proto(tmp_path)
+    candidate = next(
+        item
+        for item in complete(
+            ["grpc://unused.invalid:1/"],
+            environment=environment,
+            cwd=tmp_path,
+        )
+        if item.value.endswith("saved.example.Greeter/SayHello")
+    )
+    assert candidate.display_text == (
+        "saved.example.Greeter/SayHello\n"
+        "\u21b3 unary request, unary response"
+    )
+
+
 def test_native_completion_target_keeps_ordinary_scanner_context(
     tmp_path: Path,
 ) -> None:
@@ -1230,7 +1280,7 @@ def test_completion_scripts_use_nul_protocol_without_eval(
     assert run_completion_command(["zsh"]) == 0
     zsh = capsys.readouterr().out
     assert "read -r -d ''" in zsh
-    assert "compadd" in zsh
+    assert "compadd -l" in zsh
     assert "eval" not in zsh
 
 
@@ -1249,7 +1299,9 @@ def test_private_protocol_is_nul_delimited(
         )
         == 0
     )
-    assert capfd.readouterr().out == "a b\0two words\0" + "1\0"
+    assert capfd.readouterr().out == (
+        "a b\0a b\n\u21b3 two words\0" + "1\0"
+    )
 
 
 def test_private_protocol_forwards_cursor_index(
@@ -1307,7 +1359,7 @@ def test_private_protocol_accepts_nul_words_on_stdin() -> None:
     )
     assert completed.stdout.split(b"\0") == [
         b"gzip",
-        b"compression value",
+        "gzip\n\u21b3 compression value".encode(),
         b"1",
         b"",
     ]
@@ -1613,6 +1665,8 @@ printf 'ARRAY=<%s>\n' "${COMPREPLY[0]}"
     else:
         program = """
 source "$1"
+path=("$2" $path)
+rehash
 compadd() { for value in "$@"; do print -r -- "ARG=<$value>"; done; }
 words=(protodial --field '' --key-password supersecret \
     grpc://later.example:443)
@@ -1626,7 +1680,14 @@ _protodial
         "PROTODIAL_TEST_INPUT": str(input_log),
     }
     completed = subprocess.run(
-        [shell_executable, "-c", program, "completion-test", str(script)],
+        [
+            shell_executable,
+            "-c",
+            program,
+            "completion-test",
+            str(script),
+            str(tmp_path),
+        ],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -1747,6 +1808,8 @@ printf 'VALUE=<%s>\n' "${{COMPREPLY[0]}}"
     else:
         program = f"""
 source "$1"
+path=("$2" $path)
+rehash
 compadd() {{ for value in "$@"; do print -r -- "ARG=<$value>"; done; }}
 words=({shell_words})
 CURRENT={active + 1}
@@ -1755,7 +1818,14 @@ SUFFIX='BAD'
 _protodial
 """
     completed = subprocess.run(
-        [shell_executable, "-c", program, "cursor-test", str(script)],
+        [
+            shell_executable,
+            "-c",
+            program,
+            "cursor-test",
+            str(script),
+            str(tmp_path),
+        ],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -1787,7 +1857,7 @@ def test_read_only_entrypoints_work_with_unwritable_data_home(
     assert "_protodial_complete" in capsys.readouterr().out
 
 
-def test_completion_install_uses_xdg_and_refuses_overwrite(
+def test_completion_install_uses_xdg_and_is_idempotent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1800,9 +1870,68 @@ def test_completion_install_uses_xdg_and_refuses_overwrite(
     assert Path(captured.out.strip()) == installed
     assert f"source {shlex.quote(str(installed))}" in captured.err
     assert installed.read_text(encoding="utf-8").startswith("# bash completion")
+    original_stat = installed.stat()
+    assert main(["completion", "install"]) == 0
+    repeated = capsys.readouterr()
+    assert Path(repeated.out.strip()) == installed
+    assert installed.stat().st_ino == original_stat.st_ino
+    installed.write_text(
+        "# bash completion for protodial; generated by "
+        "`protodial completion bash`.\nold\n",
+        encoding="utf-8",
+    )
+    assert main(["completion", "install"]) == 0
+    capsys.readouterr()
+    assert "_protodial_complete" in installed.read_text(encoding="utf-8")
+    assert main(["completion", "install", "--force"]) == 0
+
+
+def test_completion_install_refuses_unmanaged_existing_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    installed = tmp_path / "bash-completion" / "completions" / "protodial"
+    installed.parent.mkdir(parents=True)
+    installed.write_text("user-owned completion\n", encoding="utf-8")
     assert main(["completion", "install"]) == 2
     assert "use --force" in capsys.readouterr().err
-    assert main(["completion", "install", "--force"]) == 0
+
+
+def test_zsh_install_uses_oh_my_zsh_custom_completion_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    framework = tmp_path / "oh-my-zsh"
+    monkeypatch.setenv("SHELL", "/bin/zsh")
+    monkeypatch.setenv("ZSH", str(framework))
+    monkeypatch.delenv("ZSH_CUSTOM", raising=False)
+    assert main(["completion", "install"]) == 0
+    installed = framework / "custom" / "completions" / "_protodial"
+    assert Path(capsys.readouterr().out.strip()) == installed
+    assert installed.read_text(encoding="utf-8").startswith(
+        "#compdef protodial"
+    )
+    zsh = shutil.which("zsh")
+    if zsh is None:
+        pytest.skip("Zsh is unavailable")
+    subprocess.run(
+        [
+            zsh,
+            "-f",
+            "-c",
+            (
+                'fpath=("$ZSH/custom/completions" $fpath); '
+                "autoload -Uz compinit; compinit -D; "
+                "[[ ${_comps[protodial]} == _protodial ]]"
+            ),
+        ],
+        env={**os.environ, "ZSH": str(framework)},
+        check=True,
+    )
 
 
 def test_completion_install_supports_explicit_zsh_path(
@@ -1852,7 +1981,14 @@ def test_install_output_is_one_command_sourceable_activation(
         "PYTHONPATH": str(root / "src"),
         "SHELL": f"/bin/{shell}",
     }
-    program = f'source "$("$1" -m protodial completion install)"; {probe}'
+    environment.pop("ZSH", None)
+    environment.pop("ZSH_CUSTOM", None)
+    environment.pop("FPATH", None)
+    program = (
+        'source "$("$1" -m protodial completion install)"; '
+        'source "$("$1" -m protodial completion install)"; '
+        f"{probe}"
+    )
     subprocess.run(
         [shell_executable, "-c", program, "activation-test", str(python)],
         capture_output=True,
