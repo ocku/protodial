@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 1.1.2 — 2026-10-26
+
+- Create the default reusable proto directory automatically when invoking an
+  RPC or running `list` or `describe`.
+- Stabilize in-process CLI output assertions against asynchronous grpcio native
+  shutdown logs, and use controlled clocks for completion deadline unit tests.
+- Document persistent shell completion setup, ProtoJSON schema diagnostics, and
+  the current development checks.
+
 ## 1.1.1 — 2026-10-26
 
 - Make completion installation idempotent and install Zsh completions into a

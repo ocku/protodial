@@ -17,8 +17,8 @@ def default_proto_paths(
 ) -> tuple[str, ...]:
     """Return the XDG data directory used for reusable proto files.
 
-    This function only derives a path. Parsing and read-only commands must not
-    create it as a side effect.
+    This function only derives a path. The CLI creates the directory when
+    executing an invocation or discovery command, after argument validation.
     """
 
     values = os.environ if environment is None else environment
