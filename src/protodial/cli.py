@@ -31,6 +31,7 @@ from .presentation.diagnostics.models import (
 )
 from .presentation.diagnostics.rendering import StderrDiagnosticSink
 from .presentation.rpc import RpcError, status_parts
+from .schema.paths import ensure_default_proto_paths
 
 if TYPE_CHECKING:
     from .rpc_core.models import RpcFailure
@@ -533,6 +534,7 @@ def _run(
     from .rpc_core.models import RpcFailure
 
     try:
+        ensure_default_proto_paths()
         runtime = load_runtime()
     except DependencyError as error:
         _emit(sink, ordinary_error_event(error, command, argv))

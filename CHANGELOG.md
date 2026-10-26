@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Create the default reusable proto directory automatically when invoking an
+  RPC or running `list` or `describe`.
 - Stabilize in-process CLI output assertions against asynchronous grpcio native
   shutdown logs, and use controlled clocks for completion deadline unit tests.
 - Document persistent shell completion setup, ProtoJSON schema diagnostics, and

@@ -156,7 +156,9 @@ protodial list --protoset-out schema.pb grpc://localhost:50051
 - `--protoset-out` atomically exports the resolved schema and its dependencies.
 - Repeat `--proto-path` for import roots. The default reusable schema directory
   is `$XDG_DATA_HOME/protodial/protos`, falling back to
-  `$HOME/.local/share/protodial/protos`. It is not created automatically.
+  `$HOME/.local/share/protodial/protos`. Invocation, `list`, and `describe`
+  create the default directory automatically. Custom import roots must already
+  exist; help, version, and shell completion do not create proto directories.
 
 Invocation URL paths use `/SERVICE/METHOD`. Discovery URLs can contain
 `/SERVICE` for `list`, or `/SYMBOL` or `/SERVICE/METHOD` for `describe`.
