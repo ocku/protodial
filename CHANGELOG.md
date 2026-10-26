@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.1.2 — 2026-10-26
+
 - Create the default reusable proto directory automatically when invoking an
   RPC or running `list` or `describe`.
 - Stabilize in-process CLI output assertions against asynchronous grpcio native

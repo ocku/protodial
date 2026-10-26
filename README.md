@@ -18,8 +18,8 @@ uv tool install .
 protodial --version
 ```
 
-If the package is available on your package index, install version 1.1.1 with
-`uv tool install protodial==1.1.1` or `python -m pip install protodial==1.1.1`.
+If the package is available on your package index, install version 1.1.2 with
+`uv tool install protodial==1.1.2` or `python -m pip install protodial==1.1.2`.
 You can also run it as `python -m protodial`.
 
 ### Shell completion
@@ -311,9 +311,9 @@ servers. `-A` / `--user-agent` sets the primary gRPC user agent.
 ## Docker
 
 ```console
-docker build -t protodial:1.1.1 .
-docker run --rm protodial:1.1.1 --version
-docker run --rm protodial:1.1.1 -d '{"name":"Ada"}' \
+docker build -t protodial:1.1.2 .
+docker run --rm protodial:1.1.2 --version
+docker run --rm protodial:1.1.2 -d '{"name":"Ada"}' \
   grpc://host.docker.internal:50051/example.Greeter/SayHello
 ```
 
