@@ -1619,9 +1619,7 @@ def test_valid_json_schema_error_names_expected_protojson_message() -> None:
     reason_line = next(
         line for line in narrow_lines if line.startswith("  reason:")
     )
-    assert reason_line == (
-        f"  reason: {event.causes[0]}"
-    )
+    assert reason_line == (f"  reason: {event.causes[0]}")
 
 
 @pytest.mark.parametrize("data", ["-", "@-"])

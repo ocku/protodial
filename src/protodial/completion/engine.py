@@ -308,9 +308,7 @@ def _completion_command(scan: _Scan) -> list[Candidate]:
         if scan.current.startswith("-"):
             return _option_candidates(
                 scan,
-                (
-                    _Option(("-h", "--help"), "show completion help"),
-                ),
+                (_Option(("-h", "--help"), "show completion help"),),
             )
         return _filter(
             (

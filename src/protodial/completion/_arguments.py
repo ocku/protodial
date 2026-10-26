@@ -284,8 +284,7 @@ def option_candidates(
                 preferred,
                 option.description,
                 display=(
-                    f"{preferred:<{width}}  {short:<2}  -- "
-                    f"{option.description}"
+                    f"{preferred:<{width}}  {short:<2}  -- {option.description}"
                 ),
             )
         )

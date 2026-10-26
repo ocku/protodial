@@ -171,8 +171,7 @@ def test_non_option_display_keeps_value_above_its_context(
         if item.value.endswith("saved.example.Greeter/SayHello")
     )
     assert candidate.display_text == (
-        "saved.example.Greeter/SayHello\n"
-        "\u21b3 unary request, unary response"
+        "saved.example.Greeter/SayHello\n\u21b3 unary request, unary response"
     )
 
 
@@ -1299,9 +1298,7 @@ def test_private_protocol_is_nul_delimited(
         )
         == 0
     )
-    assert capfd.readouterr().out == (
-        "a b\0a b\n\u21b3 two words\0" + "1\0"
-    )
+    assert capfd.readouterr().out == ("a b\0a b\n\u21b3 two words\0" + "1\0")
 
 
 def test_private_protocol_forwards_cursor_index(
