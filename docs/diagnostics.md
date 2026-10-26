@@ -47,15 +47,32 @@ large early cause or source excerpt cannot hide concise remediation that comes
 later. The final note reports the exact net character reduction from the
 complete rendering.
 
+## Request input errors
+
+Request parsing errors use `input.invalid` with code `E2101`. Malformed JSON
+reports that the request body is not valid JSON, with a source location when
+available. Valid JSON that cannot be mapped to the request message instead
+names the expected ProtoJSON schema and gives a field or value failure reason.
+Human headlines and causes remain on single lines even when the protobuf
+parser's reason contains embedded newlines.
+
+For a ProtoJSON schema mismatch, JSON diagnostics additionally include
+`context.kind: "protojson_schema"`, `context.request_type` (the fully qualified
+protobuf message name), and `context.request_index` (one-based within the
+request stream). These fields distinguish schema mismatches without parsing
+human wording. Both cases retain exit code 1.
+
 ## NDJSON schema v1
 
 `--diagnostic-format json` writes one compact JSON object per stderr line and
-flushes every event. Each object has these required fields:
+flushes every event.
 
-Machine mode also suppresses grpcio C-core logging before grpcio is loaded;
-those native writes bypass Python's diagnostic stream and cannot be represented
-as schema-v1 events. RPC failures remain available as normal `rpc.failed`
+The CLI suppresses grpcio C-core logging before grpcio is loaded in both
+human and JSON modes; those native writes bypass Python's diagnostic stream
+and cannot be represented as schema-v1 events. RPC failures remain available as normal `rpc.failed`
 diagnostics.
+
+Each object has these required fields:
 
 - `schema`: always `protodial.diagnostic.v1`;
 - `sequence`: a one-based, increasing integer for this process;

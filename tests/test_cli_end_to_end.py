@@ -529,10 +529,13 @@ def test_method_descriptor_can_be_rendered(schema: Schema) -> None:
     )
 
 
+# Capture Python streams for in-process CLI calls. grpcio servers in this
+# process can emit delayed native shutdown logs directly to fd 2; those are
+# independent of the CLI diagnostic sink. Binary tests retain fd capture.
 def _json_output(
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
 ) -> tuple[list[dict[str, object]], str]:
-    captured = capfd.readouterr()
+    captured = capsys.readouterr()
     return [
         json.loads(line) for line in captured.out.splitlines()
     ], captured.err
@@ -562,7 +565,7 @@ def _json_output(
 def test_cli_invokes_all_rpc_cardinalities_with_a_local_proto(
     schema: Schema,
     plaintext_server: RunningServer,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
     method: str,
     data: str,
     expected: list[dict[str, object]],
@@ -577,7 +580,7 @@ def test_cli_invokes_all_rpc_cardinalities_with_a_local_proto(
         ]
     )
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 0
     assert output == expected
     assert stderr == ""
@@ -590,7 +593,7 @@ def test_cli_invokes_all_rpc_cardinalities_with_a_local_proto(
 def test_omitted_raw_input_is_independent_of_request_fields(
     schema: Schema,
     plaintext_server: RunningServer,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
     method: str,
 ) -> None:
     exit_code = main(
@@ -603,7 +606,7 @@ def test_omitted_raw_input_is_independent_of_request_fields(
         ]
     )
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 0
     assert output == [{}]
     assert stderr == ""
@@ -709,7 +712,7 @@ def test_cli_reports_missing_request_files_as_structured_local_io(
     schema: Schema,
     plaintext_server: RunningServer,
     tmp_path: Path,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
     option: str,
     value: str,
     argument: str,
@@ -728,7 +731,7 @@ def test_cli_reports_missing_request_files_as_structured_local_io(
         ]
     )
 
-    captured = capfd.readouterr()
+    captured = capsys.readouterr()
     diagnostic = json.loads(captured.err)
     start = option_value.rfind(str(missing))
     assert exit_code == 1
@@ -815,7 +818,7 @@ def test_cli_reads_delayed_unary_pipe_to_eof(
 def test_cli_uses_a_protoset_without_reflection(
     schema: Schema,
     plaintext_server: RunningServer,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     exit_code = main(
         [
@@ -827,7 +830,7 @@ def test_cli_uses_a_protoset_without_reflection(
         ]
     )
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 0
     assert output == [{"text": "SET"}]
     assert stderr == ""
@@ -839,7 +842,7 @@ def test_cli_uses_a_protoset_without_reflection(
 
 def test_wait_for_ready_defers_local_rpc_connection_until_rpc_deadline(
     schema: Schema,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
     server.add_generic_rpc_handlers(
@@ -860,13 +863,13 @@ def test_wait_for_ready_defers_local_rpc_connection_until_rpc_deadline(
     ]
 
     assert main([*common, target]) == 1
-    assert "connection was not ready" in capfd.readouterr().err
+    assert "connection was not ready" in capsys.readouterr().err
 
     start = Timer(0.25, server.start)
     start.start()
     try:
         assert main([*common, "--wait-for-ready", target]) == 0
-        output, stderr = _json_output(capfd)
+        output, stderr = _json_output(capsys)
         assert output == [{"text": "READY"}]
         assert stderr == ""
     finally:
@@ -877,7 +880,7 @@ def test_wait_for_ready_defers_local_rpc_connection_until_rpc_deadline(
 @pytest.mark.parametrize("target_form", ["dns-triple", "dns-single", "ipv4"])
 def test_cli_invokes_through_native_resolver_target(
     plaintext_server: RunningServer,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
     target_form: str,
 ) -> None:
     _host, port = plaintext_server.target.rsplit(":", 1)
@@ -901,7 +904,7 @@ def test_cli_invokes_through_native_resolver_target(
         ]
     )
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 0
     assert output == [{"text": target_form.upper()}]
     assert stderr == ""
@@ -910,7 +913,7 @@ def test_cli_invokes_through_native_resolver_target(
 @pytest.mark.parametrize("target_prefix", ["unix:", "unix://"])
 def test_cli_invokes_through_unix_socket_target(
     schema: Schema,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
     target_prefix: str,
 ) -> None:
     if not hasattr(socket, "AF_UNIX"):
@@ -950,7 +953,7 @@ def test_cli_invokes_through_unix_socket_target(
         finally:
             server.stop(None).wait()
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 0
     assert output == [{"text": "UNIX"}]
     assert stderr == ""
@@ -962,7 +965,7 @@ def test_cli_invokes_through_unix_socket_target(
 )
 def test_cli_invokes_through_abstract_unix_socket_target(
     schema: Schema,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     socket_name = f"protodial-{os.getpid()}-{time.time_ns()}"
     target = f"unix-abstract:{socket_name}"
@@ -993,7 +996,7 @@ def test_cli_invokes_through_abstract_unix_socket_target(
     finally:
         server.stop(None).wait()
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 0
     assert output == [{"text": "ABSTRACT"}]
     assert stderr == ""
@@ -1001,7 +1004,7 @@ def test_cli_invokes_through_abstract_unix_socket_target(
 
 def test_cli_reflection_metadata_compression_and_diagnostics(
     plaintext_server: RunningServer,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     exit_code = main(
         [
@@ -1021,7 +1024,7 @@ def test_cli_reflection_metadata_compression_and_diagnostics(
         ]
     )
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 0
     assert output == [{"text": "REFLECTED"}]
     assert "e2e-header: ready" in stderr
@@ -1058,7 +1061,7 @@ def test_cli_reflection_metadata_compression_and_diagnostics(
 
 def test_cli_uses_stable_v1_reflection(
     schema: Schema,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     running = _make_server(schema, stable_reflection=True)
     try:
@@ -1074,7 +1077,7 @@ def test_cli_uses_stable_v1_reflection(
     finally:
         running.server.stop(None).wait()
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 0
     assert output == [{"text": "STABLE"}]
     assert "server reflection negotiated v1" in stderr
@@ -1086,7 +1089,7 @@ def test_cli_uses_stable_v1_reflection(
 
 def test_cli_sanitizes_reflection_protocol_errors(
     schema: Schema,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     running = _make_server(
         schema,
@@ -1098,7 +1101,7 @@ def test_cli_sanitizes_reflection_protocol_errors(
     finally:
         running.server.stop(None).wait()
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 1
     assert output == []
     assert "reflection: 13: bad\\nforged\\rline\\x1b[2J\\u202eowned" in stderr
@@ -1107,7 +1110,7 @@ def test_cli_sanitizes_reflection_protocol_errors(
 
 def test_dns_resolver_sends_endpoint_as_reflection_host(
     schema: Schema,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     expected_hosts: list[str] = []
     running = _make_server(
@@ -1130,7 +1133,7 @@ def test_dns_resolver_sends_endpoint_as_reflection_host(
     finally:
         running.server.stop(None).wait()
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 0
     assert output == [{"text": "AUTHORITY"}]
     assert stderr == ""
@@ -1139,7 +1142,7 @@ def test_dns_resolver_sends_endpoint_as_reflection_host(
 def test_cli_renders_rich_status_from_a_real_server(
     schema: Schema,
     plaintext_server: RunningServer,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     exit_code = main(
         [
@@ -1152,7 +1155,7 @@ def test_cli_renders_rich_status_from_a_real_server(
         ]
     )
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 1
     assert output == []
     assert "protodial: (E4103) INVALID_ARGUMENT (3)" in stderr
@@ -1171,7 +1174,7 @@ def test_cli_renders_rich_status_from_a_real_server(
 def test_cli_failure_uses_canonical_method_for_suffix_aliases(
     validator_schema: ValidatorSchema,
     validator_server: RunningServer,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
     method_alias: str,
 ) -> None:
     exit_code = main(
@@ -1185,7 +1188,7 @@ def test_cli_failure_uses_canonical_method_for_suffix_aliases(
         ]
     )
 
-    captured = capfd.readouterr()
+    captured = capsys.readouterr()
     assert exit_code == 1
     assert captured.out == ""
     assert f"  call: `{VALIDATOR_SERVICE_NAME}/Validate`" in captured.err
@@ -1198,7 +1201,7 @@ def test_cli_failure_uses_canonical_method_for_suffix_aliases(
 def test_cli_ndjson_propagates_canonical_method_for_suffix_aliases(
     validator_schema: ValidatorSchema,
     validator_server: RunningServer,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
     method_alias: str,
 ) -> None:
     exit_code = main(
@@ -1216,7 +1219,7 @@ def test_cli_ndjson_propagates_canonical_method_for_suffix_aliases(
         ]
     )
 
-    captured = capfd.readouterr()
+    captured = capsys.readouterr()
     events = [json.loads(line) for line in captured.err.splitlines()]
     by_name = {event["event"]: event for event in events}
     canonical = f"{VALIDATOR_SERVICE_NAME}/Validate"
@@ -1235,7 +1238,7 @@ def test_cli_exports_descriptors_after_a_successful_call(
     schema: Schema,
     plaintext_server: RunningServer,
     tmp_path: Path,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     output_path = tmp_path / "exported.pb"
     exit_code = main(
@@ -1250,7 +1253,7 @@ def test_cli_exports_descriptors_after_a_successful_call(
         ]
     )
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     exported = descriptor_pb2.FileDescriptorSet.FromString(
         output_path.read_bytes()
     )
@@ -1264,7 +1267,7 @@ def test_cli_reports_descriptor_export_failure_after_a_successful_call(
     schema: Schema,
     plaintext_server: RunningServer,
     tmp_path: Path,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     output_path = tmp_path / "exported.pb"
     output_path.mkdir()
@@ -1280,7 +1283,7 @@ def test_cli_reports_descriptor_export_failure_after_a_successful_call(
         ]
     )
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 1
     assert output == [{"text": "EXPORT"}]
     assert "protodial: (E8002)" in stderr
@@ -1301,7 +1304,7 @@ def test_cli_reports_descriptor_export_failure_after_a_successful_call(
 def test_cli_enforces_grpc_message_size_limits(
     schema: Schema,
     plaintext_server: RunningServer,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
     limit_option: str,
     data: str,
 ) -> None:
@@ -1317,7 +1320,7 @@ def test_cli_enforces_grpc_message_size_limits(
         ]
     )
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 1, stderr.decode("utf-8", errors="replace")
     assert output == []
     assert "RESOURCE_EXHAUSTED" in stderr
@@ -1326,7 +1329,7 @@ def test_cli_enforces_grpc_message_size_limits(
 def test_cli_enforces_rpc_deadline(
     schema: Schema,
     plaintext_server: RunningServer,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     exit_code = main(
         [
@@ -1340,7 +1343,7 @@ def test_cli_enforces_rpc_deadline(
         ]
     )
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 1
     assert output == []
     assert "DEADLINE_EXCEEDED" in stderr
@@ -1502,7 +1505,7 @@ def certificates(tmp_path_factory: pytest.TempPathFactory) -> Certificates:
 def test_cli_verified_tls_and_mtls(
     schema: Schema,
     certificates: Certificates,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
     require_client_certificate: bool,
 ) -> None:
     ca = certificates.ca.read_bytes()
@@ -1541,7 +1544,7 @@ def test_cli_verified_tls_and_mtls(
     finally:
         running.server.stop(None).wait()
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 0
     assert output == [{"text": "SECURE"}]
     assert stderr == ""
@@ -1551,7 +1554,7 @@ def test_cli_verified_tls_and_mtls(
 def test_cli_insecure_tls_tunnel(
     schema: Schema,
     certificates: Certificates,
-    capfd: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     use_tcp: bool,
 ) -> None:
@@ -1580,7 +1583,7 @@ def test_cli_insecure_tls_tunnel(
     finally:
         running.server.stop(None).wait()
 
-    output, stderr = _json_output(capfd)
+    output, stderr = _json_output(capsys)
     assert exit_code == 0, stderr
     assert output == [{"text": "TUNNEL"}]
     assert (

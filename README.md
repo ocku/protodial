@@ -39,7 +39,19 @@ safe to run again. Unrecognized files are left untouched unless `--force` is
 passed. For Zsh, a configured Oh My Zsh or exported `FPATH` completion
 directory is preferred so later shells load the completion normally; otherwise
 the XDG data directory is used. Use `--path FILE` to select an exact
-destination. The command never edits shell startup files.
+destination. The command never edits shell startup files. To activate completion
+in future shells, ensure Bash loads its bash-completion framework, or that Zsh
+includes the installed directory in `fpath` before running `compinit`. For the
+Zsh fallback directory, add this to `~/.zshrc`:
+
+```zsh
+fpath=("${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions" $fpath)
+autoload -Uz compinit
+compinit
+```
+
+Alternatively, put `source "$(protodial completion install)"` in your shell's
+startup file to install or refresh and activate it on each startup.
 
 To load completion without installing it:
 
@@ -55,7 +67,9 @@ Completion covers commands and options, local and reusable `.proto` files,
 services, methods, describe symbols, request and response fields, enum and
 boolean values, and file paths. Methods can come from explicit schemas, saved
 protos, or server reflection. Saved protos are suggestions only and do not
-become implicit RPC inputs.
+become implicit RPC inputs. Option suggestions use the long spelling and show
+short aliases and descriptions. Zsh also displays method and schema context;
+Bash inserts the candidate values.
 
 Put reusable files in `$XDG_DATA_HOME/protodial/protos` (or
 `~/.local/share/protodial/protos`). Filesystem and reflection work is bounded
@@ -183,6 +197,12 @@ Use `--allow-unknown-fields` to ignore unknown JSON input fields,
 `--emit-defaults` to include default-valued output fields, and
 `--max-input-buffer` to limit buffered parser input.
 
+Malformed JSON and valid JSON with invalid protobuf fields produce different
+diagnostics. Schema failures name the expected request message and explain
+which field or value failed. Use `protodial describe --template TARGET/METHOD`
+to generate a starting request, or `protodial describe TARGET MESSAGE` to
+inspect the expected fields.
+
 ### Raw file input
 
 Bind a file to a `bytes` field with `--field:file`; this selects raw input.
@@ -305,10 +325,18 @@ request, and certificate files into the container; add `-i` when reading stdin.
 uv sync --dev
 uv run protodial --help
 uv run pytest
+uv run ruff format --check .
 uv run ruff check .
 uv run pyright
 uv build
 ```
+
+CI runs formatting, linting, type checking, and tests on Linux, macOS, and
+Windows with Python 3.10 and 3.14, plus wheel and Docker smoke checks. Tests of
+in-process CLI text output capture Python streams so asynchronous grpcio native
+server logs cannot contaminate assertions. Subprocess and binary tests retain
+coverage of process streams. Completion deadline unit tests advance a controlled
+clock; integration tests still exercise real filesystem and network timeouts.
 
 See [examples](examples/README.md) for runnable servers and calls, and
 [CHANGELOG.md](CHANGELOG.md) for release notes. The CLI is the primary supported

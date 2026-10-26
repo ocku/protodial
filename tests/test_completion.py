@@ -611,12 +611,16 @@ def test_reflection_rejects_oversized_tls_input(
 
 def test_reflected_method_walk_shares_one_completion_deadline(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     environment, proto = _saved_proto(tmp_path)
     compiled = completion_engine._local_sources(
         completion_engine._scan(["--proto", str(proto), ""]), environment
     )[0]
     service = compiled.find_symbol("saved.example.Greeter")
+
+    now = 0.0
+    monkeypatch.setattr(time, "monotonic", lambda: now)
 
     class SlowReflectionLike:
         pool = compiled.pool
@@ -628,8 +632,9 @@ def test_reflected_method_walk_shares_one_completion_deadline(
             return tuple(f"slow.Service{index}" for index in range(20))
 
         def find_symbol(self, _name: str) -> object:
+            nonlocal now
             self.calls += 1
-            time.sleep(0.03)
+            now += 0.03
             return service
 
     source = SlowReflectionLike()
@@ -639,11 +644,8 @@ def test_reflected_method_walk_shares_one_completion_deadline(
         nullcontext(),
         deadline,
     )
-    started = time.monotonic()
     completion_engine._methods([source])  # type: ignore[list-item]
-    elapsed = time.monotonic() - started
-    assert elapsed < 0.5
-    assert 1 <= source.calls <= 4
+    assert source.calls == 4
 
 
 def test_midline_cursor_uses_current_word_and_later_schema_context(
@@ -1212,6 +1214,8 @@ def test_path_and_recursive_proto_scans_have_wall_deadlines(
     for index in range(100):
         (tmp_path / f"schema-{index:03}.proto").touch()
     original_scandir = os.scandir
+    now = 0.0
+    monkeypatch.setattr(time, "monotonic", lambda: now)
 
     class SlowScandir:
         def __init__(self, path: object) -> None:
@@ -1227,17 +1231,15 @@ def test_path_and_recursive_proto_scans_have_wall_deadlines(
             return self
 
         def __next__(self) -> os.DirEntry[str]:
-            time.sleep(0.01)
+            nonlocal now
+            now += 0.01
             return next(self.entries)
 
     monkeypatch.setattr(completion_engine.os, "scandir", SlowScandir)
-    started = time.monotonic()
     direct = completion_engine._path_candidates("schema", tmp_path)
     walked = list(completion_engine._walk_files(tmp_path, ".proto"))
-    elapsed = time.monotonic() - started
-    assert elapsed < 0.75
-    assert len(direct) < 100
-    assert len(walked) < 100
+    assert 0 < len(direct) < 100
+    assert 0 < len(walked) < 100
 
 
 def test_continuation_candidates_suppress_trailing_space(
