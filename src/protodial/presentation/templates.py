@@ -3,33 +3,18 @@
 from __future__ import annotations
 
 import json
-from typing import TypeAlias
 
 from google.protobuf.descriptor import (
     Descriptor,
     FieldDescriptor,
-    OneofDescriptor,
 )
 
-from ..schema.source_protos import field_proto
+from ..json_types import JsonScalar as JSONScalar
+from ..json_types import JsonValue as JSONValue
+from ..schema.inspection import is_map as _is_map
+from ..schema.inspection import is_synthetic_oneof as _is_synthetic_oneof
 
-JSONScalar: TypeAlias = None | bool | int | float | str
-JSONValue: TypeAlias = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
-
-
-def _is_map(field: FieldDescriptor) -> bool:
-    return bool(
-        field.is_repeated
-        and field.message_type is not None
-        and field.message_type.GetOptions().map_entry
-    )
-
-
-def _is_synthetic_oneof(oneof: OneofDescriptor) -> bool:
-    field = oneof.fields[0] if len(oneof.fields) == 1 else None
-    if field is None:
-        return False
-    return field_proto(field).proto3_optional
+__all__ = ["JSONScalar", "JSONValue", "message_template"]
 
 
 def message_template(descriptor: Descriptor, max_depth: int = 8) -> str:

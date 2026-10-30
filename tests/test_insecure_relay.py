@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from protodial.transport_core import insecure
+from protodial.transport_core import relay as insecure
 from protodial.transport_core.insecure import InsecureTlsTunnel
 
 

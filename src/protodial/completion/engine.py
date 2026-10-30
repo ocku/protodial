@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import os
-import time
-from collections.abc import Iterable, Mapping, Sequence
+import os as os
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import cast
 from urllib.parse import urlsplit, urlunsplit
 
 from ..schema.contracts import DescriptorSource
@@ -34,6 +32,8 @@ from ._arguments import (
 from ._arguments import (
     unique_candidates as _unique,
 )
+from ._paths import path_candidates as _path_candidates
+from ._paths import walk_files as _walk_files
 from ._reflection import (
     OpenedReflectionSource as _OpenedReflectionSource,
 )
@@ -56,14 +56,11 @@ from ._schema_candidates import (
     method_candidates as _methods,
 )
 from ._schema_candidates import (
+    service_candidates as _services,
+)
+from ._schema_candidates import (
     symbol_candidates as _symbols,
 )
-
-_MAX_DEPTH = 8
-_MAX_SCAN_ENTRIES = 8192
-_MAX_DIRECTORY_ENTRIES = 4096
-_PATH_SCAN_SECONDS = 0.05
-_CWD_SCAN_SECONDS = 0.05
 
 __all__ = [
     "Candidate",
@@ -75,88 +72,6 @@ __all__ = [
     "_symbols",
     "complete",
 ]
-
-
-def _walk_files(root: Path, suffix: str | None) -> Iterable[Path]:
-    if not root.is_dir():
-        return
-    scanned = 0
-    deadline = time.monotonic() + _CWD_SCAN_SECONDS
-    pending = [(root, 0)]
-    while pending and scanned < _MAX_SCAN_ENTRIES:
-        if time.monotonic() >= deadline:
-            return
-        directory, depth = pending.pop()
-        try:
-            entries = os.scandir(directory)
-        except OSError:
-            continue
-        with entries:
-            for entry in entries:
-                scanned += 1
-                if scanned > _MAX_SCAN_ENTRIES or time.monotonic() >= deadline:
-                    return
-                if entry.name.startswith("."):
-                    continue
-                try:
-                    if entry.is_symlink():
-                        continue
-                    if entry.is_dir(follow_symlinks=False):
-                        if depth < _MAX_DEPTH:
-                            pending.append((Path(entry.path), depth + 1))
-                        continue
-                    if not entry.is_file(follow_symlinks=False):
-                        continue
-                except OSError:
-                    continue
-                if suffix is None or entry.name.endswith(suffix):
-                    yield Path(entry.path)
-
-
-def _path_candidates(
-    prefix: str,
-    cwd: Path,
-    *,
-    suffix: str | None = None,
-    directories_only: bool = False,
-) -> list[Candidate]:
-    expanded = Path(prefix).expanduser() if prefix else Path(".")
-    parent_text = str(expanded.parent) if prefix else "."
-    parent = (
-        expanded.parent if expanded.is_absolute() else cwd / expanded.parent
-    )
-    needle = expanded.name if prefix else ""
-    result: list[Candidate] = []
-    deadline = time.monotonic() + _PATH_SCAN_SECONDS
-    try:
-        entries = os.scandir(parent)
-    except OSError:
-        return []
-    with entries:
-        for index, entry in enumerate(entries):
-            if index >= _MAX_DIRECTORY_ENTRIES or time.monotonic() >= deadline:
-                break
-            if not entry.name.startswith(needle):
-                continue
-            try:
-                is_directory = entry.is_dir(follow_symlinks=False)
-                is_file = entry.is_file(follow_symlinks=False)
-            except OSError:
-                continue
-            value = str(Path(parent_text) / entry.name)
-            if parent_text == ".":
-                value = entry.name
-            if is_directory:
-                result.append(
-                    Candidate(f"{value}/", "directory", append_space=False)
-                )
-            elif (
-                is_file
-                and not directories_only
-                and (suffix is None or entry.name.endswith(suffix))
-            ):
-                result.append(Candidate(value, "file"))
-    return sorted(result, key=lambda candidate: candidate.value)
 
 
 def _proto_candidates(
@@ -303,7 +218,7 @@ def _value_candidates(
     return values
 
 
-def _completion_command(scan: _Scan) -> list[Candidate]:
+def _completion_command(scan: _Scan, cwd: Path) -> list[Candidate]:
     if not scan.positionals:
         if scan.current.startswith("-"):
             return _option_candidates(
@@ -344,7 +259,7 @@ def _completion_command(scan: _Scan) -> list[Candidate]:
             scan.current,
         )
     if previous == "--path":
-        return _path_candidates(scan.current, Path.cwd())
+        return _path_candidates(scan.current, cwd)
     return []
 
 
@@ -400,21 +315,7 @@ def _discovery_url_candidates(
     sources, opened = _sources(scan, environment, reflection=True)
     try:
         if scan.mode == "list":
-            items: list[Candidate] = []
-            for source in sources:
-                try:
-                    names: Sequence[str]
-                    if isinstance(source, _SavedProtoSource):
-                        saved_source = cast(
-                            _SavedProtoSource, cast(object, source)
-                        )
-                        names = saved_source.list_services(prefix)
-                    else:
-                        names = source.list_services()
-                    items.extend(Candidate(name, "service") for name in names)
-                except Exception:
-                    continue
-            candidates = _unique(items)
+            candidates = _services(sources, prefix)
         else:
             candidates = _symbols(sources, prefix)
         return [
@@ -443,25 +344,7 @@ def _positional_candidates(
     if scan.mode == "list" and len(scan.positionals) == 1:
         sources, opened = _sources(scan, environment, reflection=True)
         try:
-            result: list[Candidate] = []
-            for source in sources:
-                try:
-                    names: Sequence[str]
-                    if isinstance(source, _SavedProtoSource):
-                        saved_source = cast(
-                            _SavedProtoSource, cast(object, source)
-                        )
-                        names = saved_source.list_services(scan.current)
-                    else:
-                        names = source.list_services()
-                    result.extend(
-                        Candidate(name, "service")
-                        for name in names
-                        if name.startswith(scan.current)
-                    )
-                except Exception:
-                    continue
-            return _unique(result)
+            return _services(sources, scan.current)
         finally:
             if opened is not None:
                 opened.close()
@@ -485,7 +368,7 @@ def complete(
     """Complete a partial argv without requiring it to parse successfully."""
     scan = _scan(words, cursor)
     if scan.mode == "completion":
-        return _completion_command(scan)
+        return _completion_command(scan, cwd)
     if scan.value_option is not None:
         return _value_candidates(scan, scan.value_option, environment, cwd)
     if scan.current.startswith("-"):

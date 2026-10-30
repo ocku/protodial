@@ -34,14 +34,14 @@ class AsyncRequestCall:
         self.responses = responses
         self.finish_after_requests = finish_after_requests
         self.cancelled = False
-        self.producer_error: Exception | None = None
+        self.producer_error: BaseException | None = None
         self.producer_done = Event()
 
     def consume(self, requests: Iterator[bytes]) -> None:
         def run() -> None:
             try:
                 list(requests)
-            except Exception as error:
+            except BaseException as error:
                 self.producer_error = error
             finally:
                 self.producer_done.set()
@@ -227,3 +227,74 @@ def test_stream_stream_waits_for_request_error_and_cancels(
     assert str(outcome["error"]) == "late request failure"
     assert call.cancelled is True
     assert written == [b"partial-response"]
+
+
+@pytest.mark.parametrize("server_streaming", [False, True])
+@pytest.mark.parametrize("secondary_operation", ["cancel", "summary"])
+@pytest.mark.parametrize("primary_type", [CliError, KeyboardInterrupt])
+def test_producer_error_survives_completion_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    server_streaming: bool,
+    secondary_operation: str,
+    primary_type: type[BaseException],
+) -> None:
+    primary = primary_type("invalid request input")
+    call = AsyncRequestCall([b"response"], finish_after_requests=True)
+    written: list[bytes] = []
+    cancel_attempts = 0
+    original_cancel = call.cancel
+
+    def requests() -> Iterator[bytes]:
+        yield b"request"
+        raise primary
+
+    def cancel() -> None:
+        nonlocal cancel_attempts
+        cancel_attempts += 1
+        if secondary_operation == "cancel":
+            raise OSError("cancel failed")
+        original_cancel()
+
+    def summary() -> None:
+        if secondary_operation == "summary":
+            raise OSError("summary failed")
+        pytest.fail("cannot read metadata after failed cancellation")
+
+    monkeypatch.setattr(call, "cancel", cancel)
+    monkeypatch.setattr(call, "trailing_metadata", summary)
+    with pytest.raises(primary_type) as caught:
+        run_rpc(
+            monkeypatch,
+            call,
+            requests(),
+            written,
+            server_streaming=server_streaming,
+        )
+
+    assert caught.value is primary
+    assert cancel_attempts == 1
+    notes = getattr(primary, "_protodial_notes", ())
+    assert any(f"{secondary_operation} failed" in note for note in notes)
+    if not server_streaming:
+        assert written == []
+
+
+@pytest.mark.parametrize("server_streaming", [False, True])
+def test_terminal_summary_failure_without_producer_failure_stays_visible(
+    monkeypatch: pytest.MonkeyPatch,
+    server_streaming: bool,
+) -> None:
+    call = AsyncRequestCall([b"response"], finish_after_requests=True)
+
+    def fail() -> None:
+        raise OSError("summary failed")
+
+    monkeypatch.setattr(call, "trailing_metadata", fail)
+    with pytest.raises(OSError, match="summary failed"):
+        run_rpc(
+            monkeypatch,
+            call,
+            iter([b"request"]),
+            [],
+            server_streaming=server_streaming,
+        )

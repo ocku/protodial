@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import os
-import re
 import stat
 import tempfile
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,6 +17,30 @@ from google.protobuf.descriptor_pool import DescriptorPool
 from ..schema.contracts import DescriptorSource
 from ..schema.paths import default_proto_paths
 from ._arguments import Candidate, Scan, unique_candidates
+from ._proto_syntax import (
+    PACKAGE as _PACKAGE,
+)
+from ._proto_syntax import (
+    RPC as _RPC,
+)
+from ._proto_syntax import (
+    direct_blocks as _direct_blocks,
+)
+from ._proto_syntax import (
+    direct_statements as _direct_statements,
+)
+from ._proto_syntax import (
+    enum_symbols as _enum_symbols,
+)
+from ._proto_syntax import (
+    extension_symbols as _extension_symbols,
+)
+from ._proto_syntax import (
+    mask_comments_and_strings as _mask_comments_and_strings,
+)
+from ._proto_syntax import (
+    message_symbols as _message_symbols,
+)
 
 _MAX_DEPTH = 6
 _MAX_ENTRIES = 4096
@@ -29,29 +52,6 @@ _COMPILE_SECONDS = 0.25
 _MAX_PROTOSET_BYTES = 1024 * 1024
 _MAX_PROTOSET_TOTAL_BYTES = 2 * 1024 * 1024
 _MAX_PROTOSETS = 16
-
-_PACKAGE = re.compile(r"\bpackage\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;")
-_BLOCK = re.compile(
-    r"\b(?P<kind>service|message|enum|oneof|extend)\s+"
-    r"(?P<name>[.A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\{"
-)
-_RPC = re.compile(
-    r"\brpc\s+(?P<name>[A-Za-z_]\w*)\s*\(\s*"
-    r"(?P<client>stream\s+)?[.A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*\)"
-    r"\s*returns\s*\(\s*(?P<server>stream\s+)?"
-    r"[.A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*\)"
-)
-_FIELD = re.compile(
-    r"(?:^|;)\s*(?:(?:optional|required|repeated)\s+)?"
-    r"(?:map\s*<[^;{}]+>|[.A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s+"
-    r"([A-Za-z_]\w*)\s*=\s*\d+\b",
-    re.MULTILINE,
-)
-_ENUM_VALUE = re.compile(
-    r"(?:^|;)\s*([A-Za-z_]\w*)\s*=\s*"
-    r"-?(?:0[xX][0-9A-Fa-f]+|\d+)\b",
-    re.MULTILINE,
-)
 
 
 @dataclass(slots=True)
@@ -149,48 +149,6 @@ def saved_proto_files(
     return tuple(sorted(found))
 
 
-def _mask_comments_and_strings(text: str) -> str:
-    """Replace comments and quoted strings while preserving line breaks."""
-    result: list[str] = []
-    index = 0
-    while index < len(text):
-        character = text[index]
-        following = text[index + 1] if index + 1 < len(text) else ""
-        if character == "/" and following == "/":
-            end = text.find("\n", index + 2)
-            if end < 0:
-                result.append(" ")
-                break
-            result.append("\n")
-            index = end + 1
-            continue
-        if character == "/" and following == "*":
-            end = text.find("*/", index + 2)
-            end = len(text) if end < 0 else end + 2
-            result.append(" ")
-            result.append("\n" * text.count("\n", index, end))
-            index = end
-            continue
-        if character in {'"', "'"}:
-            quote = character
-            end = index + 1
-            while end < len(text):
-                if text[end] == "\\" and end + 1 < len(text):
-                    end += 2
-                    continue
-                if text[end] == quote:
-                    end += 1
-                    break
-                end += 1
-            result.append(" ")
-            result.append("\n" * text.count("\n", index, end))
-            index = end
-            continue
-        result.append(character)
-        index += 1
-    return "".join(result)
-
-
 def _read_regular_proto(path: Path) -> str | None:
     """Read one bounded regular file without following a final symlink."""
     flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
@@ -265,92 +223,6 @@ def _snapshot_protosets(
             directory.cleanup()
 
 
-def _brace_body(text: str, opening: int) -> tuple[str, int] | None:
-    depth = 0
-    for index in range(opening, len(text)):
-        if text[index] == "{":
-            depth += 1
-        elif text[index] == "}":
-            depth -= 1
-            if depth == 0:
-                return text[opening + 1 : index], index + 1
-    return None
-
-
-def _direct_statements(body: str) -> str:
-    result = list(body)
-    depth = 0
-    for index, character in enumerate(body):
-        if character == "{":
-            depth += 1
-        if depth and character != "\n":
-            result[index] = " "
-        if character == "}":
-            depth = max(0, depth - 1)
-    return "".join(result)
-
-
-def _direct_blocks(text: str) -> Iterable[tuple[str, str, str]]:
-    index = 0
-    depth = 0
-    while index < len(text):
-        character = text[index]
-        if depth == 0:
-            match = _BLOCK.match(text, index)
-            if match is not None:
-                block = _brace_body(text, match.end() - 1)
-                if block is None:
-                    return
-                body, end = block
-                yield match.group("kind"), match.group("name"), body
-                index = end
-                continue
-        if character == "{":
-            depth += 1
-        elif character == "}":
-            depth = max(0, depth - 1)
-        index += 1
-
-
-def _enum_symbols(body: str, name: str) -> list[Candidate]:
-    result = [Candidate(name, "enum")]
-    scope, _, _ = name.rpartition(".")
-    result.extend(
-        Candidate(
-            f"{scope}.{match.group(1)}" if scope else match.group(1),
-            "enum value",
-        )
-        for match in _ENUM_VALUE.finditer(_direct_statements(body))
-    )
-    return result
-
-
-def _message_symbols(body: str, name: str) -> list[Candidate]:
-    result = [Candidate(name, "message")]
-    result.extend(
-        Candidate(f"{name}.{match.group(1)}", "field")
-        for match in _FIELD.finditer(_direct_statements(body))
-    )
-    for kind, child_name, child_body in _direct_blocks(body):
-        qualified = f"{name}.{child_name}"
-        if kind == "message":
-            result.extend(_message_symbols(child_body, qualified))
-        elif kind == "enum":
-            result.extend(_enum_symbols(child_body, qualified))
-        elif kind == "oneof":
-            result.append(Candidate(qualified, "oneof"))
-            result.extend(
-                Candidate(f"{name}.{match.group(1)}", "field")
-                for match in _FIELD.finditer(_direct_statements(child_body))
-            )
-        elif kind == "extend":
-            result.extend(
-                Candidate(f"{name}.{match.group(1)}", "extension")
-                for match in _FIELD.finditer(_direct_statements(child_body))
-            )
-    return result
-
-
 def parse_proto(path: str, budget: ScanBudget) -> ProtoEntry | None:
     """Extract completion names from one small regular proto file."""
     text = _read_regular_proto(Path(path))
@@ -386,10 +258,7 @@ def parse_proto(path: str, budget: ScanBudget) -> ProtoEntry | None:
         elif kind == "enum":
             symbols.extend(_enum_symbols(body, name))
         elif kind == "extend":
-            symbols.extend(
-                Candidate(qualify(match.group(1)), "extension")
-                for match in _FIELD.finditer(_direct_statements(body))
-            )
+            symbols.extend(_extension_symbols(body, package))
     return ProtoEntry(
         path,
         tuple(dict.fromkeys(services)),

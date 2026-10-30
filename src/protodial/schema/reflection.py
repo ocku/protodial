@@ -4,16 +4,13 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Iterable, Mapping, Sequence
-from importlib import import_module
-from types import ModuleType, SimpleNamespace
+from collections.abc import Mapping, Sequence
 from typing import cast
 
 from google.protobuf import (
     descriptor_database,
     descriptor_pb2,
     descriptor_pool,
-    message_factory,
 )
 from google.protobuf.message import DecodeError, Message
 
@@ -24,9 +21,16 @@ from .contracts import (
     ReflectionCall,
     ReflectionChannel,
     ReflectionResponse,
+    ReflectionRpcError,
     ReflectionWireModule,
-    RpcError,
 )
+from .reflection_extensions import (
+    find_extension_file as _find_extension_file,
+)
+from .reflection_extensions import (
+    known_extension_numbers as _known_extension_numbers,
+)
+from .reflection_wire import stable_wire_module as _stable_wire_module
 from .registry import FileDescriptorRegistry, IndexedDescriptorSource
 
 REFLECTION_SERVICES = frozenset(
@@ -94,59 +98,6 @@ def _validate_response_identity(
             f"response valid_host {valid_host!r} does not match "
             f"request host {request_host!r}"
         )
-
-
-def _stable_wire_module(wire_v1alpha: ModuleType) -> ReflectionWireModule:
-    try:
-        module = import_module("grpc_reflection.v1.reflection_pb2")
-        return cast(ReflectionWireModule, cast(object, module))
-    except ImportError:
-        # Some grpcio-reflection releases package only v1alpha. Build v1 classes
-        # from that wire-identical schema rather than using v1alpha classes on
-        # the stable endpoint.
-        v1_file = descriptor_pb2.FileDescriptorProto.FromString(
-            wire_v1alpha.DESCRIPTOR.serialized_pb
-        )
-        v1_file.name = "grpc/reflection/v1/reflection.proto"
-        v1_file.package = "grpc.reflection.v1"
-
-        def update_message_types(
-            message: descriptor_pb2.DescriptorProto,
-        ) -> None:
-            for field in message.field:
-                if field.type_name.startswith(".grpc.reflection.v1alpha."):
-                    field.type_name = field.type_name.replace(
-                        ".grpc.reflection.v1alpha.", ".grpc.reflection.v1."
-                    )
-            for nested in message.nested_type:
-                update_message_types(nested)
-
-        for message in v1_file.message_type:
-            update_message_types(message)
-        for service in v1_file.service:
-            for method in service.method:
-                method.input_type = method.input_type.replace(
-                    ".grpc.reflection.v1alpha.", ".grpc.reflection.v1."
-                )
-                method.output_type = method.output_type.replace(
-                    ".grpc.reflection.v1alpha.", ".grpc.reflection.v1."
-                )
-
-        v1_pool = descriptor_pool.DescriptorPool()
-        v1_pool.Add(v1_file)
-        module = SimpleNamespace(
-            ServerReflectionRequest=message_factory.GetMessageClass(
-                v1_pool.FindMessageTypeByName(
-                    "grpc.reflection.v1.ServerReflectionRequest"
-                )
-            ),
-            ServerReflectionResponse=message_factory.GetMessageClass(
-                v1_pool.FindMessageTypeByName(
-                    "grpc.reflection.v1.ServerReflectionResponse"
-                )
-            ),
-        )
-        return cast(ReflectionWireModule, cast(object, module))
 
 
 class ReflectionDatabase(descriptor_database.DescriptorDatabase):
@@ -360,7 +311,7 @@ class ReflectionDatabase(descriptor_database.DescriptorDatabase):
             primary = error
             if not isinstance(error, self._grpc.RpcError):
                 raise
-            rpc_error = cast(RpcError, error)
+            rpc_error = cast(ReflectionRpcError, error)
             if (
                 rpc_error.code() == self._grpc.StatusCode.UNIMPLEMENTED
                 and self.version is None
@@ -484,51 +435,6 @@ class ReflectionDatabase(descriptor_database.DescriptorDatabase):
         result = sorted(numbers)
         self._extension_numbers[normalized] = tuple(result)
         return result
-
-
-def _extensions_in_message(
-    message: descriptor_pb2.DescriptorProto,
-) -> Sequence[descriptor_pb2.FieldDescriptorProto]:
-    extensions = list(message.extension)
-    for nested in message.nested_type:
-        extensions.extend(_extensions_in_message(nested))
-    return extensions
-
-
-def _file_extensions(
-    file_proto: descriptor_pb2.FileDescriptorProto,
-) -> Sequence[descriptor_pb2.FieldDescriptorProto]:
-    extensions = list(file_proto.extension)
-    for message in file_proto.message_type:
-        extensions.extend(_extensions_in_message(message))
-    return extensions
-
-
-def _find_extension_file(
-    file_protos: Iterable[descriptor_pb2.FileDescriptorProto],
-    extendee_name: str,
-    extension_number: int,
-) -> descriptor_pb2.FileDescriptorProto | None:
-    for file_proto in file_protos:
-        if any(
-            extension.extendee.lstrip(".") == extendee_name
-            and extension.number == extension_number
-            for extension in _file_extensions(file_proto)
-        ):
-            return file_proto
-    return None
-
-
-def _known_extension_numbers(
-    file_protos: Iterable[descriptor_pb2.FileDescriptorProto],
-    extendee_name: str,
-) -> set[int]:
-    return {
-        extension.number
-        for file_proto in file_protos
-        for extension in _file_extensions(file_proto)
-        if extension.extendee.lstrip(".") == extendee_name
-    }
 
 
 class ReflectionDescriptorSource(IndexedDescriptorSource):

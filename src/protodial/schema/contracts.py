@@ -162,7 +162,7 @@ class GrpcModule(GrpcTransport, RpcRuntime, Protocol):
     """grpcio module surface used by transport, reflection, and RPC calls."""
 
 
-class RpcError(Protocol):
+class ReflectionRpcError(Protocol):
     """Provide a status code for a failed reflection call."""
 
     def code(self) -> object:

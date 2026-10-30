@@ -288,8 +288,9 @@ def test_renderer_handles_all_rpc_cardinalities(protoset_path: str) -> None:
         "  option deprecated = true;",
     ]
     assert (
-        "rpc Unary (.alpha.Request) returns (.alpha.Request) "
-        "[deprecated = true];" in rendered
+        "  rpc Unary (.alpha.Request) returns (.alpha.Request) {\n"
+        "    option deprecated = true;\n"
+        "  }" in rendered
     )
     assert (
         "rpc Upload (stream .alpha.Request) returns (.alpha.Request);"

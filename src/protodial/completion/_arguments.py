@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from functools import cache
+from typing import cast
+
+from ..argument_parser.construction import option_actions
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,76 +38,65 @@ class OptionSpec:
     repeatable: bool = False
 
 
-_SHARED_OPTIONS = (
-    OptionSpec(("-h", "--help"), "show command help"),
-    OptionSpec(("--proto",), "local .proto file", "proto", True),
-    OptionSpec(("--protoset",), "FileDescriptorSet file", "protoset", True),
-    OptionSpec(("--protoset-out",), "write resolved descriptor set", "file"),
-    OptionSpec(("--use-reflection",), "also use server reflection"),
-    OptionSpec(("--proto-path",), "protobuf import root", "directory", True),
-    OptionSpec(("--plaintext",), "disable TLS"),
-    OptionSpec(("-k", "--insecure"), "disable TLS verification"),
-    OptionSpec(("--cacert",), "PEM CA bundle", "file", True),
-    OptionSpec(("--cert",), "PEM client certificate", "file"),
-    OptionSpec(("--key",), "PEM client private key", "file"),
-    OptionSpec(("--key-password",), "client private-key password", "text"),
-    OptionSpec(("--servername",), "TLS server identity", "text"),
-    OptionSpec(("--authority",), "HTTP/2 authority", "text"),
-    OptionSpec(("--connect-timeout",), "connection timeout", "number"),
-    OptionSpec(("-m", "--max-time"), "RPC deadline", "number"),
-    OptionSpec(
-        ("--max-recv-message-size",), "maximum response bytes", "number"
-    ),
-    OptionSpec(("--max-send-message-size",), "maximum request bytes", "number"),
-    OptionSpec(("--compression",), "gRPC compression", "compression"),
-    OptionSpec(("--keepalive-time",), "HTTP/2 keepalive interval", "number"),
-    OptionSpec(("-A", "--user-agent"), "primary gRPC user agent", "text"),
-    OptionSpec(("-H", "--header"), "shared metadata", "header", True),
-    OptionSpec(
-        ("--reflect-header",), "reflection-only metadata", "header", True
-    ),
-    OptionSpec(("--color",), "diagnostic color policy", "color"),
-    OptionSpec(("--diagnostic-format",), "diagnostic encoding", "diagnostic"),
-    OptionSpec(("-v", "--verbose"), "increase diagnostics", repeatable=True),
-)
+_COMPLETION_HINTS = {
+    "--help": ("show command help", None),
+    "--proto": ("local .proto file", "proto"),
+    "--protoset": ("FileDescriptorSet file", "protoset"),
+    "--protoset-out": ("write resolved descriptor set", "file"),
+    "--use-reflection": ("also use server reflection", None),
+    "--proto-path": ("protobuf import root", "directory"),
+    "--plaintext": ("disable TLS", None),
+    "--insecure": ("disable TLS verification", None),
+    "--cacert": ("PEM CA bundle", "file"),
+    "--cert": ("PEM client certificate", "file"),
+    "--key": ("PEM client private key", "file"),
+    "--key-password": ("client private-key password", "text"),
+    "--servername": ("TLS server identity", "text"),
+    "--authority": ("HTTP/2 authority", "text"),
+    "--connect-timeout": ("connection timeout", "number"),
+    "--max-time": ("RPC deadline", "number"),
+    "--max-recv-message-size": ("maximum response bytes", "number"),
+    "--max-send-message-size": ("maximum request bytes", "number"),
+    "--compression": ("gRPC compression", "compression"),
+    "--keepalive-time": ("HTTP/2 keepalive interval", "number"),
+    "--user-agent": ("primary gRPC user agent", "text"),
+    "--header": ("shared metadata", "header"),
+    "--reflect-header": ("reflection-only metadata", "header"),
+    "--color": ("diagnostic color policy", "color"),
+    "--diagnostic-format": ("diagnostic encoding", "diagnostic"),
+    "--verbose": ("increase diagnostics", None),
+    "--version": ("show the protodial version", None),
+    "--data": ("request data or @file", "data"),
+    "--input-format": ("request encoding", "format"),
+    "--output-format": ("response encoding", "format"),
+    "--field": ("set a request field", "field"),
+    "--field:file": ("read a file into a bytes field", "field_file"),
+    "--input-field": ("raw input bytes field", "input_field"),
+    "--output-field": ("raw output bytes field", "output_field"),
+    "--chunk-size": ("raw stream chunk size", "number"),
+    "--allow-unknown-fields": ("allow unknown ProtoJSON fields", None),
+    "--emit-defaults": ("emit default-valued fields", None),
+    "--max-input-buffer": ("maximum buffered input", "number"),
+    "--wait-for-ready": ("wait for an available server", None),
+    "--include": ("show response headers", None),
+    "--show-trailers": ("show response trailers", None),
+    "--show-status": ("show final RPC status", None),
+    "--format-error": ("decode structured gRPC errors", None),
+    "--rpc-header": ("RPC-only metadata", "header"),
+    "--method": ("service/method for a native target", "method"),
+    "--show-reflection": ("include reflection services", None),
+    "--template": ("print sample request ProtoJSON", None),
+    "--template-depth": ("maximum template depth", "number"),
+}
 
-_INVOKE_OPTIONS = (
-    OptionSpec(("--version",), "show the protodial version"),
-    OptionSpec(("-d", "--data"), "request data or @file", "data"),
-    OptionSpec(("--input-format",), "request encoding", "format"),
-    OptionSpec(("--output-format",), "response encoding", "format"),
-    OptionSpec(("--field",), "set a request field", "field", True),
-    OptionSpec(
-        ("--field:file",), "read a file into a bytes field", "field_file"
-    ),
-    OptionSpec(("--input-field",), "raw input bytes field", "input_field"),
-    OptionSpec(("--output-field",), "raw output bytes field", "output_field"),
-    OptionSpec(("--chunk-size",), "raw stream chunk size", "number"),
-    OptionSpec(("--allow-unknown-fields",), "allow unknown ProtoJSON fields"),
-    OptionSpec(("--emit-defaults",), "emit default-valued fields"),
-    OptionSpec(("--max-input-buffer",), "maximum buffered input", "number"),
-    OptionSpec(("--wait-for-ready",), "wait for an available server"),
-    OptionSpec(("-i", "--include"), "show response headers"),
-    OptionSpec(("--show-trailers",), "show response trailers"),
-    OptionSpec(("--show-status",), "show final RPC status"),
-    OptionSpec(("--format-error",), "decode structured gRPC errors"),
-    OptionSpec(("--rpc-header",), "RPC-only metadata", "header", True),
-    OptionSpec(("--method",), "service/method for a native target", "method"),
-)
-
-_LIST_OPTIONS = (
-    OptionSpec(("--show-reflection",), "include reflection services"),
-)
-_DESCRIBE_OPTIONS = (
-    OptionSpec(("--template",), "print sample request ProtoJSON"),
-    OptionSpec(("--template-depth",), "maximum template depth", "number"),
-)
 
 VALUE_CHOICES = {
-    "format": ("json", "text", "protobuf", "raw"),
-    "compression": ("none", "gzip", "deflate"),
-    "color": ("auto", "always", "never"),
-    "diagnostic": ("human", "json"),
+    kind: tuple(cast(Sequence[str], action.choices))
+    for action in option_actions("invoke")
+    for kind in (
+        _COMPLETION_HINTS.get(action.option_strings[-1], ("", None))[1],
+    )
+    if kind is not None and action.choices is not None
 }
 
 
@@ -124,12 +118,28 @@ class Scan:
         return None
 
 
+@cache
 def _options(mode: str) -> tuple[OptionSpec, ...]:
-    if mode == "list":
-        return (*_SHARED_OPTIONS, *_LIST_OPTIONS)
-    if mode == "describe":
-        return (*_SHARED_OPTIONS, *_DESCRIBE_OPTIONS)
-    return (*_SHARED_OPTIONS, *_INVOKE_OPTIONS)
+    options: list[OptionSpec] = []
+    for action in option_actions(mode):
+        if action.dest == "interactive":
+            continue  # This option exists only to explain its replacement.
+        description, kind = _COMPLETION_HINTS.get(
+            action.option_strings[-1], (action.help or "", None)
+        )
+        if action.nargs != 0 and kind is None:
+            kind = "text"
+        # argparse exposes action arity but has no public repeatability flag.
+        repeatable = isinstance(
+            action,
+            (argparse._AppendAction, argparse._CountAction),  # pyright: ignore[reportPrivateUsage]
+        )
+        options.append(
+            OptionSpec(
+                tuple(action.option_strings), description, kind, repeatable
+            )
+        )
+    return tuple(options)
 
 
 def _option_map(options: Iterable[OptionSpec]) -> dict[str, OptionSpec]:

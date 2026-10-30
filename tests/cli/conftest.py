@@ -1,0 +1,1 @@
+from .support import _isolate_default_proto_home as _isolate_default_proto_home

@@ -11,8 +11,7 @@ COPY --from=uv /uv /bin/uv
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin protodial \
-    && uv sync --locked --no-dev --no-editable \
-    && rm -rf /root/.cache/uv
+    && uv sync --no-cache --locked --no-dev --no-editable
 
 USER protodial
 ENTRYPOINT ["protodial"]

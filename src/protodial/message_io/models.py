@@ -2,20 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Protocol, TypeAlias
+from typing import Protocol
 
 from ..errors import CliError
 from ..formats import MessageFormat
-
-JsonScalar: TypeAlias = str | int | float | bool | None
-JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
-
-
-class MethodStreaming(Protocol):
-    """Describe an RPC method's streaming cardinality."""
-
-    client_streaming: bool
-    server_streaming: bool
+from ..json_types import JsonScalar as JsonScalar
+from ..json_types import JsonValue as JsonValue
+from ..rpc_core.protocols import MethodStreaming as MethodStreaming
 
 
 class InputBufferOptions(Protocol):

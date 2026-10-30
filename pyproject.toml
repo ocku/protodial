@@ -67,7 +67,7 @@ include = [
 ]
 
 [tool.pyright]
-include = ["src", "typing_tests"]
+include = ["src", "tests/typing"]
 extraPaths = ["src"]
 venvPath = "."
 venv = ".venv"

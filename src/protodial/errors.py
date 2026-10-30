@@ -144,6 +144,14 @@ class ProtoCompilationError(SchemaInputError):
     """A proto source file was rejected by the compiler."""
 
 
+def error_notes(error: BaseException) -> tuple[str, ...]:
+    """Return printable application notes on every supported Python."""
+    values = getattr(error, "_protodial_notes", None)
+    if values is None:
+        values = getattr(error, "__notes__", ())
+    return tuple(str(value) for value in values)
+
+
 def add_error_note(error: BaseException, note: str) -> None:
     """Attach a printable secondary-error note on every supported Python."""
     existing = getattr(error, "_protodial_notes", ())

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import cast
 
 from google.protobuf.descriptor import (
@@ -16,27 +16,33 @@ from google.protobuf.descriptor import (
 )
 
 from ..schema.contracts import DescriptorSource
+from ..schema.inspection import SCALAR_TYPES as _SCALAR_TYPES
 from ._arguments import Candidate, Scan, unique_candidates
 from ._saved_protos import SavedProtoSource
 from ._selection import selected_method
 
-_SCALAR_TYPES = {
-    FieldDescriptor.TYPE_DOUBLE: "double",
-    FieldDescriptor.TYPE_FLOAT: "float",
-    FieldDescriptor.TYPE_INT64: "int64",
-    FieldDescriptor.TYPE_UINT64: "uint64",
-    FieldDescriptor.TYPE_INT32: "int32",
-    FieldDescriptor.TYPE_FIXED64: "fixed64",
-    FieldDescriptor.TYPE_FIXED32: "fixed32",
-    FieldDescriptor.TYPE_BOOL: "bool",
-    FieldDescriptor.TYPE_STRING: "string",
-    FieldDescriptor.TYPE_BYTES: "bytes",
-    FieldDescriptor.TYPE_UINT32: "uint32",
-    FieldDescriptor.TYPE_SFIXED32: "sfixed32",
-    FieldDescriptor.TYPE_SFIXED64: "sfixed64",
-    FieldDescriptor.TYPE_SINT32: "sint32",
-    FieldDescriptor.TYPE_SINT64: "sint64",
-}
+
+def service_candidates(
+    sources: Iterable[DescriptorSource], prefix: str = ""
+) -> list[Candidate]:
+    """Return matching service names from available completion sources."""
+    result: list[Candidate] = []
+    for source in sources:
+        try:
+            names: Sequence[str]
+            if isinstance(source, SavedProtoSource):
+                saved_source = cast(SavedProtoSource, cast(object, source))
+                names = saved_source.list_services(prefix)
+            else:
+                names = source.list_services()
+            result.extend(
+                Candidate(name, "service")
+                for name in names
+                if name.startswith(prefix)
+            )
+        except Exception:
+            continue
+    return unique_candidates(result)
 
 
 def method_candidates(
