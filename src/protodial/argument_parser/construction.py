@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+from functools import cache
+from typing import cast
 
 from .. import __version__
 from ..commands.models import (
@@ -12,9 +14,12 @@ from ..commands.models import (
     DEFAULT_TIMEOUT,
 )
 from ..formats import MessageFormat
+from ..presentation.diagnostics import ColorPolicy, DiagnosticFormat
 from ..schema.paths import default_proto_paths
 
 _FORMATS = tuple(message_format.value for message_format in MessageFormat)
+DIAGNOSTIC_FORMATS = tuple(value.value for value in DiagnosticFormat)
+COLOR_POLICIES = tuple(value.value for value in ColorPolicy)
 EXAMPLES = """\
 Examples:
   protodial [options...] grpc://HOST/SERVICE/METHOD
@@ -28,6 +33,35 @@ Examples:
 
 Run `protodial list --help`, `protodial describe --help`, or
 `protodial completion --help` for command-specific options."""
+
+
+@cache
+def option_actions(mode: str) -> tuple[argparse.Action, ...]:
+    """Expose registered option metadata for completion and diagnostics."""
+    if mode == "invoke":
+        parser = build_invocation_parser()
+    else:
+        root = build_parser()
+        subcommands = next(
+            action
+            for action in root._actions
+            if action.nargs == argparse.PARSER
+        )
+        children = cast(dict[str, argparse.ArgumentParser], subcommands.choices)
+        parser = children[mode]
+    return tuple(action for action in parser._actions if action.option_strings)
+
+
+@cache
+def value_option_names() -> frozenset[str]:
+    """Derive bootstrap option arity from the actual command parsers."""
+    return frozenset(
+        name
+        for mode in ("invoke", "list", "describe")
+        for action in option_actions(mode)
+        if action.nargs != 0
+        for name in action.option_strings
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -355,13 +389,13 @@ def _add_rpc_metadata_argument(parser: argparse.ArgumentParser) -> None:
 def _add_diagnostic_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--color",
-        choices=("auto", "always", "never"),
+        choices=COLOR_POLICIES,
         default=argparse.SUPPRESS,
         help="diagnostic color policy (default: auto)",
     )
     parser.add_argument(
         "--diagnostic-format",
-        choices=("human", "json"),
+        choices=DIAGNOSTIC_FORMATS,
         default=argparse.SUPPRESS,
         help="stderr diagnostic encoding (default: human)",
     )

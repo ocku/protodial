@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 1.1.3 — 2026-10-30
+
+- Fix directory completion after a trailing separator, respect the supplied
+  working directory when completing installation paths, and discover fields
+  after compact nested declarations, proto2 groups, and hexadecimal field
+  numbers in saved schemas.
+- Preserve enum-value options and group bodies in symbol descriptions, and
+  render RPC method options using valid protobuf syntax verified by `protoc`.
+- Preserve interrupts and request-producer errors when RPC cancellation or
+  terminal diagnostics also fail, without cancelling the same call twice.
+- Split CLI, schema, RPC, transport, diagnostics, and test modules by
+  responsibility. Consolidate shared types, parser metadata, diagnostic
+  choices, exception notes, and completion logic. Document generated-file
+  exceptions to the 500-line limit.
+- Test non-editable installations in CI and run every Docker example against
+  the installed client. Use installed resources in subprocess and shell tests,
+  remove superficial example assertions, and keep type-contract fixtures under
+  `tests/typing`.
+- Correct the documented JSON response and fresh-install test instructions,
+  and avoid leaving a root-owned build cache in the Docker user's home.
+
 ## 1.1.2 — 2026-10-26
 
 - Create the default reusable proto directory automatically when invoking an

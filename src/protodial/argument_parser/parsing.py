@@ -18,7 +18,11 @@ from ..commands.models import (
     TlsOptions,
 )
 from ..commands.operations import Operation
-from .construction import build_invocation_parser, build_parser
+from .construction import (
+    DIAGNOSTIC_FORMATS,
+    build_invocation_parser,
+    build_parser,
+)
 from .resolution import resolve_command, resolve_transport_mode
 from .validation import (
     validate_common_options,
@@ -97,9 +101,10 @@ def parse_arguments(argv: Sequence[str] | None = None) -> Command:
         diagnostic_format = os.environ.get(
             "PROTODIAL_DIAGNOSTIC_FORMAT", "human"
         )
-        if diagnostic_format not in {"human", "json"}:
+        if diagnostic_format not in DIAGNOSTIC_FORMATS:
             parser.error(
-                "PROTODIAL_DIAGNOSTIC_FORMAT must be one of: human, json"
+                "PROTODIAL_DIAGNOSTIC_FORMAT must be one of: "
+                + ", ".join(DIAGNOSTIC_FORMATS)
             )
         namespace.diagnostic_format = diagnostic_format
     if not hasattr(namespace, "color"):

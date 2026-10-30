@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pathlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import singledispatch
@@ -19,10 +18,18 @@ from ...errors import (
     ProtoCompilationError,
     SchemaInputError,
     TlsMaterialError,
-    TlsMaterialSource,
+    error_notes,
 )
 from ...formats import MessageFormat
-from ...schema.source_locations import utf8_byte_column_offset
+from ._dependencies import (
+    missing_dependency,
+)
+from ._error_spans import (
+    input_span,
+    operand_span,
+    option_path_span,
+    schema_input_span,
+)
 from .models import (
     DiagnosticEvent,
     DiagnosticSeverity,
@@ -33,14 +40,7 @@ from .models import (
 if TYPE_CHECKING:
     from ...message_io.models import JsonMessageSchemaError
 
-_DECLARED_DEPENDENCIES = {
-    "cryptography": "cryptography",
-    "grpc": "grpcio",
-    "grpc_reflection": "grpcio-reflection",
-    "grpc_tools": "grpcio-tools",
-    "google.protobuf": "protobuf",
-    "google.rpc": "googleapis-common-protos",
-}
+
 _TRANSPORT_TERMS = ("tls", "certificate", "connection", "authority")
 _TRANSPORT_HELP = ("check the target, network, TLS, and timeout settings",)
 
@@ -72,154 +72,6 @@ class _ErrorPresentation:
     help: tuple[str, ...] = ()
 
 
-def _notes(error: BaseException) -> tuple[str, ...]:
-    """Return application notes on every supported Python version."""
-    values = getattr(error, "_protodial_notes", None)
-    if values is None:
-        values = getattr(error, "__notes__", ())
-    return tuple(str(value) for value in values)
-
-
-def _missing_dependency(error: BaseException) -> DependencyError | None:
-    """Translate a missing declared distribution to an actionable error."""
-    if not isinstance(error, ImportError):
-        return None
-    missing = getattr(error, "name", None)
-    if not isinstance(missing, str):
-        return None
-    distribution = next(
-        (
-            package
-            for module, package in _DECLARED_DEPENDENCIES.items()
-            if missing == module or missing.startswith(module + ".")
-        ),
-        None,
-    )
-    if distribution is None:
-        return None
-    return DependencyError(
-        f"required dependency `{distribution}` is unavailable; reinstall with "
-        f"`python3 -m pip install {distribution}`"
-    )
-
-
-def _input_span(command: Command, message: str) -> DiagnosticSpan | None:
-    """Locate a parse failure in literal, file, or standard input."""
-    import re
-
-    options = command.invoke_options
-    if options is None or options.data is None:
-        return None
-    match = re.search(r"\bat line (\d+), column (\d+)(?=\s*:|$)", message)
-    if match is None:
-        match = re.match(
-            r"invalid text request \d+:\s*(\d+):(\d+)\s*:", message
-        )
-    line = int(match.group(1)) if match else None
-    column = int(match.group(2)) if match else None
-    data = options.data
-    source = "--data"
-    text: str | None = None
-    if data in ("-", "@-"):
-        source = "<stdin>"
-    elif data.startswith("@"):
-        source = data[1:]
-        try:
-            contents = pathlib.Path(source).read_text(encoding="utf-8")
-            lines = contents.splitlines()
-            if not lines or contents.endswith(("\n", "\r")):
-                lines.append("")
-            if line is not None and 0 < line <= len(lines):
-                text = lines[line - 1]
-        except (OSError, UnicodeError):
-            pass
-    else:
-        lines = data.splitlines()
-        if not lines or data.endswith(("\n", "\r")):
-            lines.append("")
-        if line is None:
-            text = lines[0]
-        elif 0 < line <= len(lines):
-            text = lines[line - 1]
-    start = (
-        min(len(text), max(0, (column or 1) - 1)) if text is not None else None
-    )
-    end = (
-        None
-        if start is None
-        else start
-        if start == len(text or "")
-        else start + 1
-    )
-    return DiagnosticSpan(
-        source,
-        line=line,
-        column=column,
-        text=text,
-        start=start,
-        end=end,
-        label="invalid input",
-    )
-
-
-def _option_path_span(
-    argv: Sequence[str],
-    error: LocalFileError | DescriptorExportError | TlsMaterialSource,
-    *,
-    label: str = "path could not be read",
-) -> DiagnosticSpan:
-    """Locate the exact configured path, including repeated options."""
-    matches: list[DiagnosticSpan] = []
-    option_strings = getattr(error, "option_strings", (error.argument,))
-    option_value = getattr(error, "option_value", error.path)
-
-    def offsets(text: str) -> tuple[int, int] | None:
-        if text != option_value:
-            return None
-        start = text.rfind(error.path)
-        if start < 0:
-            return None
-        return start, start + len(error.path)
-
-    for index, token in enumerate(argv):
-        for option in option_strings:
-            if token == option and index + 1 < len(argv):
-                value = argv[index + 1]
-                span_offsets = offsets(value)
-                if span_offsets is not None:
-                    matches.append(
-                        DiagnosticSpan(
-                            f"argument {index + 2}",
-                            text=value,
-                            start=span_offsets[0],
-                            end=span_offsets[1],
-                            label=label,
-                        )
-                    )
-                break
-            prefix = option + "=" if option.startswith("--") else option
-            if token.startswith(prefix) and token != option:
-                value = token[len(prefix) :]
-                span_offsets = offsets(value)
-                if span_offsets is not None:
-                    matches.append(
-                        DiagnosticSpan(
-                            f"argument {index + 1}",
-                            text=token,
-                            start=len(prefix) + span_offsets[0],
-                            end=len(prefix) + span_offsets[1],
-                            label=label,
-                        )
-                    )
-                break
-    if matches:
-        try:
-            return matches[error.occurrence]
-        except IndexError:
-            pass
-    return DiagnosticSpan(error.path, label=label)
-
-
 def _os_error_reason(error: BaseException) -> str:
     """Return stable OS detail without duplicating a path in the headline."""
     detail = error.strerror if isinstance(error, OSError) else None
@@ -234,75 +86,6 @@ def operation_symbol(command: Command) -> str:
     if isinstance(operation, Describe):
         return operation.symbol
     return operation.service or ""
-
-
-def _operand_span(
-    argv: Sequence[str], value: str, label: str
-) -> DiagnosticSpan | None:
-    """Locate an operation operand, including a method embedded in a URL."""
-    if not value:
-        return None
-    for index in range(len(argv) - 1, -1, -1):
-        token = argv[index]
-        if token == value:
-            return DiagnosticSpan(
-                f"argument {index + 1}",
-                text=token,
-                start=0,
-                end=len(value),
-                label=label,
-            )
-    for index in range(len(argv) - 1, -1, -1):
-        token = argv[index]
-        start = token.find(value)
-        if start < 0 or (start > 0 and token[start - 1] not in {"/", "="}):
-            continue
-        return DiagnosticSpan(
-            f"argument {index + 1}",
-            text=token,
-            start=start,
-            end=start + len(value),
-            label=label,
-        )
-    return None
-
-
-def _schema_input_span(error: SchemaInputError) -> DiagnosticSpan:
-    """Build a source span for a schema decoder or compiler failure."""
-    text: str | None = None
-    if error.line is not None:
-        try:
-            contents = pathlib.Path(error.path).read_text(encoding="utf-8")
-            lines = contents.splitlines()
-            if not lines or contents.endswith(("\n", "\r")):
-                lines.append("")
-            if 0 < error.line <= len(lines):
-                text = lines[error.line - 1]
-        except (OSError, UnicodeError):
-            pass
-    start = None
-    if text is not None and error.column is not None:
-        start = (
-            utf8_byte_column_offset(text, error.column)
-            if isinstance(error, ProtoCompilationError)
-            else min(len(text), max(0, error.column - 1))
-        )
-    end = (
-        None
-        if start is None
-        else start
-        if start == len(text or "")
-        else start + 1
-    )
-    return DiagnosticSpan(
-        error.path,
-        line=error.line,
-        column=error.column,
-        text=text,
-        start=start,
-        end=end,
-        label="invalid schema input",
-    )
 
 
 def _transport_presentation(context: _ErrorContext) -> _ErrorPresentation:
@@ -370,9 +153,7 @@ def _describe_tls_material(
             ),
         },
         spans=tuple(
-            _option_path_span(
-                context.argv, source, label="invalid TLS material"
-            )
+            option_path_span(context.argv, source, label="invalid TLS material")
             for source in error.sources
         ),
         causes=(error.reason,),
@@ -397,7 +178,7 @@ def _describe_local_file(
         f"could not read {error.description} `{error.path}`",
         "E8002",
         fields=fields,
-        spans=(_option_path_span(context.argv, error),),
+        spans=(option_path_span(context.argv, error),),
         causes=(_os_error_reason(error.original),),
         help=(
             f"check that `{error.path}` exists and is readable, then pass it "
@@ -424,7 +205,7 @@ def _describe_descriptor_export(
         "E8002",
         fields=fields,
         spans=(
-            _option_path_span(
+            option_path_span(
                 context.argv,
                 error,
                 label="export destination could not be written",
@@ -476,7 +257,7 @@ def _describe_schema_input(
         name,
         context.message,
         code,
-        spans=(_schema_input_span(error),),
+        spans=(schema_input_span(error),),
         causes=(error.reason,) if error.reason else (),
         help=(error.help,) if error.help else (),
     )
@@ -487,9 +268,7 @@ def _describe_message_parse(
 ) -> _ErrorPresentation:
     """Describe a request body that could not be parsed."""
     command = context.command
-    span = (
-        _input_span(command, context.message) if command is not None else None
-    )
+    span = input_span(command, context.message) if command is not None else None
     input_format = (
         command.invoke_options.input_format.value
         if command is not None and command.invoke_options is not None
@@ -517,9 +296,7 @@ def _describe_json_message_schema(
 ) -> _ErrorPresentation:
     """Distinguish valid JSON from an invalid ProtoJSON message shape."""
     command = context.command
-    span = (
-        _input_span(command, context.message) if command is not None else None
-    )
+    span = input_span(command, context.message) if command is not None else None
     return _ErrorPresentation(
         "input.invalid",
         "request body is valid JSON but does not match the ProtoJSON schema "
@@ -610,7 +387,7 @@ def _schema_symbol_presentation(
         )
     command = context.command
     span = (
-        _operand_span(context.argv, operation_symbol(command), label)
+        operand_span(context.argv, operation_symbol(command), label)
         if command is not None
         else None
     )
@@ -679,7 +456,7 @@ def ordinary_error_event(
     dependency_error = (
         error
         if isinstance(error, DependencyError)
-        else _missing_dependency(error)
+        else missing_dependency(error)
     )
     presented_error = dependency_error or error
     message = str(presented_error) or "the operation failed"
@@ -699,5 +476,5 @@ def ordinary_error_event(
         spans=presentation.spans,
         causes=presentation.causes,
         help=presentation.help,
-        notes=_notes(presented_error),
+        notes=error_notes(presented_error),
     )

@@ -18,17 +18,14 @@ from google.protobuf.descriptor import (
 )
 from google.protobuf.message import Message
 
+from ..schema.contracts import DescriptorSymbol as DescriptorLike
+from ..schema.inspection import SCALAR_TYPES as _SCALAR_TYPES
+from ..schema.inspection import is_map as _is_map
+from ..schema.inspection import is_synthetic_oneof as _is_synthetic_oneof
+from ..schema.source_comments import comments_for_file as _comments_for_file
+from ..schema.source_protos import field_proto as _field_proto
 from ..schema.source_protos import source_file_proto
 
-DescriptorLike = (
-    Descriptor
-    | EnumDescriptor
-    | EnumValueDescriptor
-    | FieldDescriptor
-    | MethodDescriptor
-    | OneofDescriptor
-    | ServiceDescriptor
-)
 DeclarationProto = (
     descriptor_pb2.DescriptorProto | descriptor_pb2.EnumDescriptorProto
 )
@@ -42,31 +39,14 @@ class _FullNamedDescriptor(Protocol):
     full_name: str
 
 
-_SCALAR_TYPES = {
-    1: "double",
-    2: "float",
-    3: "int64",
-    4: "uint64",
-    5: "int32",
-    6: "fixed64",
-    7: "fixed32",
-    8: "bool",
-    9: "string",
-    12: "bytes",
-    13: "uint32",
-    15: "sfixed32",
-    16: "sfixed64",
-    17: "sint32",
-    18: "sint64",
-}
-
-
 def render_descriptor(descriptor: DescriptorLike) -> str:
     """Render a protobuf descriptor as source-like text."""
     if isinstance(descriptor, OneofDescriptor):
         file_descriptor = descriptor.containing_type.file
     elif isinstance(descriptor, MethodDescriptor):
         file_descriptor = descriptor.containing_service.file
+    elif isinstance(descriptor, EnumValueDescriptor):
+        file_descriptor = descriptor.type.file
     else:
         file_descriptor = cast(_DescriptorWithFile, descriptor).file
     comments = _comments_for_file(file_descriptor)
@@ -84,20 +64,8 @@ def render_descriptor(descriptor: DescriptorLike) -> str:
             return _with_comment(field, _render_field(field), comments)
         return _render_oneof(descriptor, comments)
     if isinstance(descriptor, FieldDescriptor):
-        line = _render_field(descriptor)
-        if descriptor.is_extension:
-            target = descriptor.containing_type
-            if target is None:
-                raise ValueError(
-                    f"extension {descriptor.full_name} has no extendee"
-                )
-            line = f"extend .{target.full_name} {{\n  {line}\n}}"
-        return _with_comment(descriptor, line, comments)
-    return _with_comment(
-        descriptor,
-        f"{descriptor.name} = {descriptor.number};",
-        comments,
-    )
+        return _render_field_declaration(descriptor, comments)
+    return _render_enum_value(descriptor, comments)
 
 
 def _render_service(
@@ -121,13 +89,17 @@ def _render_service(
 def _render_method(method: MethodDescriptor) -> str:
     request_stream = "stream " if method.client_streaming else ""
     response_stream = "stream " if method.server_streaming else ""
-    options = _option_suffix(
+    declaration = (
+        f"rpc {method.name} ({request_stream}.{method.input_type.full_name}) "
+        f"returns ({response_stream}.{method.output_type.full_name})"
+    )
+    options = _option_assignments(
         method.GetOptions(), ("deprecated", "idempotency_level")
     )
-    return (
-        f"rpc {method.name} ({request_stream}.{method.input_type.full_name}) "
-        f"returns ({response_stream}.{method.output_type.full_name}){options};"
-    )
+    if not options:
+        return declaration + ";"
+    body = "\n".join(f"  option {option};" for option in options)
+    return f"{declaration} {{\n{body}\n}}"
 
 
 def _render_enum(
@@ -149,13 +121,18 @@ def _render_enum(
         names = ", ".join(json.dumps(name) for name in proto.reserved_name)
         lines.append(f"  reserved {names};")
     for value in enum.values:
-        suffix = _option_suffix(value.GetOptions(), ("deprecated",))
-        rendered = f"{value.name} = {value.number}{suffix};"
-        lines.extend(
-            _indent(_with_comment(value, rendered, comments).splitlines())
-        )
+        lines.extend(_indent(_render_enum_value(value, comments).splitlines()))
     lines.append("}")
     return _with_comment(enum, "\n".join(lines), comments)
+
+
+def _render_enum_value(
+    value: EnumValueDescriptor, comments: dict[str, str]
+) -> str:
+    options = _option_assignments(value.GetOptions(), ("deprecated",))
+    suffix = f" [{', '.join(options)}]" if options else ""
+    rendered = f"{value.name} = {value.number}{suffix};"
+    return _with_comment(value, rendered, comments)
 
 
 def _render_message(
@@ -199,7 +176,7 @@ def _message_nested_declarations(
         )
     group_types = {
         field.message_type.full_name
-        for field in message.fields
+        for field in (*message.fields, *message.extensions)
         if field.type == FieldDescriptor.TYPE_GROUP
         and field.message_type is not None
     }
@@ -216,15 +193,21 @@ def _message_nested_declarations(
     return lines
 
 
-def _render_message_field(
+def _render_field_declaration(
     field: FieldDescriptor, comments: dict[str, str]
-) -> list[str]:
+) -> str:
     rendered = (
         _render_group(field, comments)
         if field.type == FieldDescriptor.TYPE_GROUP
         else _render_field(field)
     )
-    return _indent(_with_comment(field, rendered, comments).splitlines())
+    if field.is_extension:
+        target = field.containing_type
+        if target is None:
+            raise ValueError(f"extension {field.full_name} has no extendee")
+        body = "\n".join(_indent(rendered.splitlines()))
+        rendered = f"extend .{target.full_name} {{\n{body}\n}}"
+    return _with_comment(field, rendered, comments)
 
 
 def _message_fields(message: Descriptor, comments: dict[str, str]) -> list[str]:
@@ -243,7 +226,9 @@ def _message_fields(message: Descriptor, comments: dict[str, str]) -> list[str]:
             rendered_oneofs.add(oneof.name)
             lines.extend(_indent(_render_oneof(oneof, comments).splitlines()))
         else:
-            lines.extend(_render_message_field(field, comments))
+            lines.extend(
+                _indent(_render_field_declaration(field, comments).splitlines())
+            )
     return lines
 
 
@@ -252,16 +237,8 @@ def _message_extensions(
 ) -> list[str]:
     lines: list[str] = []
     for extension in message.extensions:
-        target_type = extension.containing_type
-        if target_type is None:
-            raise ValueError(f"extension {extension.full_name} has no extendee")
-        block = (
-            f"extend .{target_type.full_name} {{\n"
-            f"  {_render_field(extension)}\n"
-            "}"
-        )
         lines.extend(
-            _indent(_with_comment(extension, block, comments).splitlines())
+            _indent(_render_field_declaration(extension, comments).splitlines())
         )
     return lines
 
@@ -286,13 +263,8 @@ def _render_group(field: FieldDescriptor, comments: dict[str, str]) -> str:
 def _render_oneof(oneof: OneofDescriptor, comments: dict[str, str]) -> str:
     lines = [f"oneof {oneof.name} {{"]
     for field in oneof.fields:
-        rendered = (
-            _render_group(field, comments)
-            if field.type == FieldDescriptor.TYPE_GROUP
-            else _render_field(field)
-        )
         lines.extend(
-            _indent(_with_comment(field, rendered, comments).splitlines())
+            _indent(_render_field_declaration(field, comments).splitlines())
         )
     lines.append("}")
     return _with_comment(oneof, "\n".join(lines), comments)
@@ -344,20 +316,6 @@ def _field_type(field: FieldDescriptor) -> str:
         f".{referenced.full_name}"
         if referenced is not None
         else _SCALAR_TYPES[field.type]
-    )
-
-
-def _is_map(field: FieldDescriptor) -> bool:
-    return bool(
-        field.is_repeated
-        and field.message_type is not None
-        and field.message_type.GetOptions().map_entry
-    )
-
-
-def _is_synthetic_oneof(oneof: OneofDescriptor) -> bool:
-    return (
-        len(oneof.fields) == 1 and _field_proto(oneof.fields[0]).proto3_optional
     )
 
 
@@ -415,36 +373,6 @@ def _file_syntax(file_descriptor: FileDescriptor) -> str:
     return proto.syntax or "proto2"
 
 
-def _field_proto(field: FieldDescriptor) -> descriptor_pb2.FieldDescriptorProto:
-    if field.is_extension:
-        if field.extension_scope is not None:
-            scope_proto = _copy_proto(field.extension_scope)
-            if not isinstance(scope_proto, descriptor_pb2.DescriptorProto):
-                raise TypeError("extension scope must be a message")
-            candidates = scope_proto.extension
-        else:
-            file_descriptor = cast(_DescriptorWithFile, field).file
-            file_proto = source_file_proto(file_descriptor)
-            if file_proto is None:
-                file_proto = descriptor_pb2.FileDescriptorProto()
-                file_descriptor.CopyToProto(file_proto)
-            candidates = file_proto.extension
-    else:
-        containing_type = field.containing_type
-        if containing_type is None:
-            raise ValueError(
-                f"field {field.full_name} has no containing message"
-            )
-        message_proto = _copy_proto(containing_type)
-        if not isinstance(message_proto, descriptor_pb2.DescriptorProto):
-            raise TypeError("field container must be a message")
-        candidates = message_proto.field
-    for candidate in candidates:
-        if candidate.name == field.name and candidate.number == field.number:
-            return candidate
-    raise ValueError(f"could not locate field proto for {field.full_name}")
-
-
 def _range(start: int, exclusive_end: int) -> str:
     end = "max" if exclusive_end >= 536_870_912 else str(exclusive_end - 1)
     return str(start) if exclusive_end == start + 1 else f"{start} to {end}"
@@ -474,7 +402,7 @@ def _default_json_name(name: str) -> str:
     )
 
 
-def _option_suffix(options: Message, names: tuple[str, ...]) -> str:
+def _option_assignments(options: Message, names: tuple[str, ...]) -> list[str]:
     rendered: list[str] = []
     for name in names:
         if not options.HasField(name):
@@ -486,14 +414,12 @@ def _option_suffix(options: Message, names: tuple[str, ...]) -> str:
         elif isinstance(value, bool):
             value = str(value).lower()
         rendered.append(f"{name} = {value}")
-    return f" [{', '.join(rendered)}]" if rendered else ""
+    return rendered
 
 
 def _standalone_option(options: Message, name: str) -> str | None:
-    if options.HasField(name):
-        value = getattr(options, name)
-        return f"option {name} = {str(value).lower()};"
-    return None
+    assignments = _option_assignments(options, (name,))
+    return f"option {assignments[0]};" if assignments else None
 
 
 def _indent(lines: list[str]) -> list[str]:
@@ -515,72 +441,3 @@ def _with_comment(
         lines.append(f"// {line.rstrip()}" if line.strip() else "//")
     lines.append(rendered)
     return "\n".join(lines)
-
-
-def _comments_for_file(file_descriptor: FileDescriptor) -> dict[str, str]:
-    proto = source_file_proto(file_descriptor)
-    if proto is None:
-        proto = descriptor_pb2.FileDescriptorProto()
-        file_descriptor.CopyToProto(proto)
-    locations = {
-        tuple(location.path): location
-        for location in proto.source_code_info.location
-    }
-    comments: dict[str, str] = {}
-
-    def save(full_name: str, path: tuple[int, ...]) -> None:
-        location = locations.get(path)
-        if location is None:
-            return
-        text = location.leading_comments or location.trailing_comments
-        if text:
-            comments[full_name] = text
-
-    package = proto.package
-
-    def qualify(parent: str, name: str) -> str:
-        return f"{parent}.{name}" if parent else name
-
-    def walk_enum(
-        enum: descriptor_pb2.EnumDescriptorProto,
-        path: tuple[int, ...],
-        parent: str,
-    ) -> None:
-        full_name = qualify(parent, enum.name)
-        save(full_name, path)
-        for index, value in enumerate(enum.value):
-            save(qualify(full_name, value.name), path + (2, index))
-
-    def walk_message(
-        message: descriptor_pb2.DescriptorProto,
-        path: tuple[int, ...],
-        parent: str,
-    ) -> None:
-        full_name = qualify(parent, message.name)
-        save(full_name, path)
-        for index, field in enumerate(message.field):
-            save(qualify(full_name, field.name), path + (2, index))
-        for index, nested in enumerate(message.nested_type):
-            walk_message(nested, path + (3, index), full_name)
-        for index, enum in enumerate(message.enum_type):
-            walk_enum(enum, path + (4, index), full_name)
-        for index, extension in enumerate(message.extension):
-            save(qualify(full_name, extension.name), path + (6, index))
-        for index, oneof in enumerate(message.oneof_decl):
-            save(qualify(full_name, oneof.name), path + (8, index))
-
-    for index, message in enumerate(proto.message_type):
-        walk_message(message, (4, index), package)
-    for index, enum in enumerate(proto.enum_type):
-        walk_enum(enum, (5, index), package)
-    for service_index, service in enumerate(proto.service):
-        full_name = qualify(package, service.name)
-        save(full_name, (6, service_index))
-        for method_index, method in enumerate(service.method):
-            save(
-                qualify(full_name, method.name),
-                (6, service_index, 2, method_index),
-            )
-    for index, extension in enumerate(proto.extension):
-        save(qualify(package, extension.name), (7, index))
-    return comments

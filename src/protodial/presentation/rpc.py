@@ -6,6 +6,7 @@ import base64
 from typing import Protocol, runtime_checkable
 
 from ..request_metadata.types import MetadataIterable, MetadataValue
+from ..rpc_core.models import RpcSummary as RpcSummary
 from .sanitization import escape_control_characters
 
 
@@ -14,18 +15,6 @@ class NamedStatus(Protocol):
     """Provide a display name for a status value."""
 
     name: str
-
-
-class RpcSummary(Protocol):
-    """Provide the outcome and diagnostics of one RPC."""
-
-    initial_metadata: MetadataIterable
-    trailing_metadata: MetadataIterable
-    code: object
-    details: str
-    sent_messages: int
-    received_messages: int
-    elapsed_seconds: float
 
 
 class RpcError(Protocol):

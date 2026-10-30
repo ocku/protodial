@@ -18,8 +18,8 @@ uv tool install .
 protodial --version
 ```
 
-If the package is available on your package index, install version 1.1.2 with
-`uv tool install protodial==1.1.2` or `python -m pip install protodial==1.1.2`.
+If the package is available on your package index, install version 1.1.3 with
+`uv tool install protodial==1.1.3` or `python -m pip install protodial==1.1.3`.
 You can also run it as `python -m protodial`.
 
 ### Shell completion
@@ -80,7 +80,7 @@ protodial -d '{"name":"Ada"}' \
 The [hello example](examples/README.md) returns compact ProtoJSON:
 
 ```json
-{"message":"Hello, Ada!","requestId":"example-123"}
+{"message": "Hello, Ada!", "requestId": "example-123"}
 ```
 
 Use `grpc://` for plaintext and `grpcs://` for TLS. Bare targets and gRPC
@@ -295,9 +295,9 @@ servers. `-A` / `--user-agent` sets the primary gRPC user agent.
 ## Docker
 
 ```console
-docker build -t protodial:1.1.2 .
-docker run --rm protodial:1.1.2 --version
-docker run --rm protodial:1.1.2 -d '{"name":"Ada"}' \
+docker build -t protodial:1.1.3 .
+docker run --rm protodial:1.1.3 --version
+docker run --rm protodial:1.1.3 -d '{"name":"Ada"}' \
   grpc://host.docker.internal:50051/example.Greeter/SayHello
 ```
 
@@ -306,6 +306,8 @@ On Docker Desktop, `host.docker.internal` addresses the host. On Linux, use
 request, and certificate files into the container; add `-i` when reading stdin.
 
 ## Development
+
+From a checkout:
 
 ```console
 uv sync --dev
@@ -317,8 +319,18 @@ uv run pyright
 uv build
 ```
 
-CI runs formatting, linting, type checking, and tests on Linux, macOS, and
-Windows with Python 3.10 and 3.14, plus wheel and Docker smoke checks.
+To test a fresh, non-editable installation of the current source, run
+`uv run --isolated --locked --no-editable --reinstall-package protodial pytest`.
+The reinstall flag rebuilds the local package even if uv has cached an older
+wheel from this checkout.
+
+Source and test files stay within 500 lines. The generated Unicode grapheme
+property table and uv's generated dependency lockfile are exceptions; keeping
+each intact makes regeneration and dependency resolution reproducible.
+
+CI runs the test suite against a non-editable installation on Linux, macOS,
+and Windows with Python 3.10 and 3.14. It also runs every documented example
+call against the Docker servers using the installed client image.
 
 See [examples](examples/README.md) for runnable servers and calls, and
 [CHANGELOG.md](CHANGELOG.md) for release notes. The CLI is the primary supported
