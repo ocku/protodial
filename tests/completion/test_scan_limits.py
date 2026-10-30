@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gc
 import os
+import subprocess
 import time
 from pathlib import Path
 
@@ -9,15 +10,48 @@ import pytest
 
 import protodial.completion._saved_protos as saved_protos_module
 import protodial.completion.engine as completion_engine
+import protodial.schema.local as local_schema_module
 from protodial.completion.engine import complete
 
 from .support import (
     _environment,
     _mkfifo_or_skip,
+    _saved_proto,
     _symlink_or_skip,
     _values,
     _write_protoset,
 )
+
+
+def test_compiler_timeout_returns_no_completion_candidates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    environment, proto = _saved_proto(tmp_path)
+    timeouts: list[float] = []
+
+    def timed_out(command: list[str], **options: object) -> None:
+        timeout = options["timeout"]
+        assert isinstance(timeout, float)
+        timeouts.append(timeout)
+        raise subprocess.TimeoutExpired(command, timeout)
+
+    monkeypatch.setattr(local_schema_module.subprocess, "run", timed_out)
+    candidates = complete(
+        [
+            "--proto",
+            str(proto),
+            "--method",
+            "saved.example.Greeter/SayHello",
+            "--field",
+            "",
+        ],
+        environment=environment,
+        cwd=tmp_path,
+    )
+
+    assert candidates == []
+    assert timeouts
+    assert all(timeout == pytest.approx(0.25) for timeout in timeouts)
 
 
 @pytest.mark.parametrize("through_symlink", [False, True])
@@ -100,6 +134,7 @@ def test_protoset_snapshot_rejects_oversized_input(tmp_path: Path) -> None:
     assert time.monotonic() - started < 0.5
 
 
+@pytest.mark.usefixtures("schema_compiler_budget")
 def test_saved_lazy_compile_uses_runtime_proto_root_precedence(
     tmp_path: Path,
 ) -> None:

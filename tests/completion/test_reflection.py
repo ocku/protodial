@@ -24,6 +24,8 @@ from .support import (
     _values,
 )
 
+pytestmark = pytest.mark.usefixtures("schema_compiler_budget")
+
 
 def test_reflected_symbol_enumeration_fetches_when_file_mapping_is_empty(
     tmp_path: Path,

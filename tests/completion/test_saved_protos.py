@@ -178,6 +178,7 @@ def test_saved_lexical_read_rejects_file_swapped_to_fifo(
     assert time.monotonic() - started < 0.5
 
 
+@pytest.mark.usefixtures("schema_compiler_budget")
 def test_saved_method_compiles_on_demand_for_field_and_enum_completion(
     tmp_path: Path,
 ) -> None:
@@ -223,6 +224,7 @@ def test_saved_fifo_import_is_bounded_by_compiler_timeout(
     assert time.monotonic() - started < 1.75
 
 
+@pytest.mark.usefixtures("schema_compiler_budget")
 def test_explicit_proto_with_more_than_128_imports_still_completes(
     tmp_path: Path,
 ) -> None:

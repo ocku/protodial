@@ -16,6 +16,8 @@ from .support import (
     _values,
 )
 
+pytestmark = pytest.mark.usefixtures("schema_compiler_budget")
+
 
 def test_midline_cursor_uses_current_word_and_later_schema_context(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

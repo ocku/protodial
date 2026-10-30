@@ -20,6 +20,9 @@
   the installed client. Use installed resources in subprocess and shell tests,
   remove superficial example assertions, and keep type-contract fixtures under
   `tests/typing`.
+- Separate schema-completion correctness checks from runner-dependent compiler
+  startup timing, while verifying the production compiler timeout and blocked
+  import handling independently.
 - Correct the documented JSON response and fresh-install test instructions,
   and avoid leaving a root-owned build cache in the Docker user's home.
 

@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import protodial.completion.engine as completion_engine
 from protodial.completion.engine import complete
 
 from .support import PROTO, _environment, _saved_proto, _values
+
+pytestmark = pytest.mark.usefixtures("schema_compiler_budget")
 
 
 def test_completion_offers_commands_options_and_static_choices(

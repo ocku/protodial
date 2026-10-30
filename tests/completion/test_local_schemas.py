@@ -11,6 +11,8 @@ from protodial.message_io import raw_input as raw_input_module
 
 from .support import _environment, _saved_proto, _values
 
+pytestmark = pytest.mark.usefixtures("schema_compiler_budget")
+
 
 def test_saved_proto_completes_methods_without_becoming_cli_input(
     tmp_path: Path,

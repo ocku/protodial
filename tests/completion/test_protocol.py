@@ -17,6 +17,8 @@ from protodial.completion.engine import Candidate, complete
 
 from .support import _saved_proto
 
+pytestmark = pytest.mark.usefixtures("schema_compiler_budget")
+
 
 def test_continuation_candidates_suppress_trailing_space(
     tmp_path: Path,
